@@ -31,26 +31,19 @@ jobs:
             flutter create . --platforms=android --org com.pocketai --project-name pocket_ai_server
           fi
 
-      - name: Prepare Android SDK and NDK
+      - name: Prepare Android NDK
         run: |
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
-          echo "ANDROID_HOME=${ANDROID_HOME}"
-          if [ -z "${ANDROID_SDK_ROOT:-}" ]; then
-            export ANDROID_SDK_ROOT="${ANDROID_HOME}"
-          fi
-          if [ -z "${ANDROID_SDK_ROOT:-}" ] || [ ! -d "${ANDROID_SDK_ROOT}" ]; then
-            echo "Android SDK was not found on the GitHub runner."
-            exit 1
-          fi
-          if [ -d "${ANDROID_SDK_ROOT}/ndk/27.2.12479018" ]; then
-            echo "Using preinstalled NDK 27.2.12479018"
-            echo "ANDROID_NDK=${ANDROID_SDK_ROOT}/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          if [ -d "$SDK_ROOT/ndk/27.3.13750724" ]; then
+            NDK_DIR="$SDK_ROOT/ndk/27.3.13750724"
           else
-            echo "Required NDK 27.2.12479018 is not preinstalled."
-            echo "Installed NDKs:"
-            ls -la "${ANDROID_SDK_ROOT}/ndk" || true
+            echo "Required preinstalled NDK 27.3.13750724 was not found."
+            ls -la "$SDK_ROOT/ndk" || true
             exit 1
           fi
+          echo "ANDROID_NDK=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "Using NDK: $NDK_DIR"
 
       - name: Fetch pinned llama.cpp
         run: bash scripts/fetch_llama_cpp.sh
