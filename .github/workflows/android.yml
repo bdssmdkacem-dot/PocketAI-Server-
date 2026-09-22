@@ -77,26 +77,16 @@ jobs:
             echo "apksigner was not found."
             exit 1
           fi
+
           KEYSTORE="$HOME/.android/debug.keystore"
+          mkdir -p "$HOME/.android"
+
           if [ ! -f "$KEYSTORE" ]; then
-            mkdir -p "$HOME/.android"
-            keytool -genkeypair -v \\
-              -keystore "$KEYSTORE" \\
-              -storepass android \\
-              -alias AndroidDebugKey \\
-              -keypass android \\
-              -keyalg RSA \\
-              -keysize 2048 \\
-              -validity 10000 \\
-              -dname "CN=Android Debug,O=Android,C=US"
+            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          "$APKSIGNER" sign \\
-            --ks "$KEYSTORE" \\
-            --ks-pass pass:android \\
-            --key-pass pass:android \\
-            --ks-key-alias AndroidDebugKey \\
-            "$APK"
-          "$APKSIGNER" verify --verbose "$APK"
+
+          "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
