@@ -1,0 +1,51 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create Flutter Android platform scaffold
+        run: |
+          if [ ! -d android/app ]; then
+            flutter create . --platforms=android --org com.pocketai --project-name pocket_ai_server
+          fi
+
+      - name: Restore PocketAI native files
+        run: |
+          mkdir -p android/app/src/main/kotlin/com/pocketai/server
+          mkdir -p android/app/src/main/cpp
+          cp android/pocketai_template/app/src/main/kotlin/com/pocketai/server/MainActivity.kt android/app/src/main/kotlin/com/pocketai/server/MainActivity.kt
+          cp android/pocketai_template/app/src/main/cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
+          cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
+
+      - name: Get packages
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Build release APK
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketai-server-release
+          path: build/app/outputs/flutter-apk/app-release.apk
