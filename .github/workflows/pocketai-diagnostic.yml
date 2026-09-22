@@ -194,20 +194,29 @@ jobs:
             echo "=== FEATURES ===" | tee -a diagnostic/emulator/device.txt
             adb shell pm list features | tee -a diagnostic/emulator/device.txt
 
-            for APK in build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk build/app/outputs/flutter-apk/app-release.apk; do
-              NAME="$(basename "$APK" .apk)"
-              echo "===== INSTALL TEST: $NAME =====" | tee "diagnostic/emulator/$NAME-install.txt"
-              adb install -r "$APK" > /tmp/install-output.txt 2>&1
-              RC=$?
-              cat /tmp/install-output.txt | tee -a "diagnostic/emulator/$NAME-install.txt"
-              echo "EXIT_CODE=$RC" | tee -a "diagnostic/emulator/$NAME-install.txt"
-              echo "--- PM PATH ---" | tee -a "diagnostic/emulator/$NAME-install.txt"
-              adb shell pm path com.pocketai.pocket_ai_server 2>&1 | tee -a "diagnostic/emulator/$NAME-install.txt"
-              if [ "$RC" -ne 0 ]; then
-                echo "--- PACKAGE MANAGER LOG ---" | tee -a "diagnostic/emulator/$NAME-install.txt"
-                adb logcat -d -v time -t 500 2>&1 | grep -Ei 'PackageManager|PackageInstaller|INSTALL_FAILED|Failure|parse|dex|sign|manifest|version|native' | tail -300 | tee -a "diagnostic/emulator/$NAME-install.txt"
-              fi
-            done
+            echo "===== INSTALL TEST: Flutter smoke APK =====" | tee diagnostic/emulator/pocketai-flutter-smoke-install.txt
+            adb install -r build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk > /tmp/flutter-install-output.txt 2>&1
+            RC=$?
+            cat /tmp/flutter-install-output.txt | tee -a diagnostic/emulator/pocketai-flutter-smoke-install.txt
+            echo "EXIT_CODE=$RC" | tee -a diagnostic/emulator/pocketai-flutter-smoke-install.txt
+            echo "--- PM PATH ---" | tee -a diagnostic/emulator/pocketai-flutter-smoke-install.txt
+            adb shell pm path com.pocketai.pocket_ai_server 2>&1 | tee -a diagnostic/emulator/pocketai-flutter-smoke-install.txt
+            if [ "$RC" -ne 0 ]; then
+              echo "--- PACKAGE MANAGER LOG ---" | tee -a diagnostic/emulator/pocketai-flutter-smoke-install.txt
+              adb logcat -d -v time -t 500 2>&1 | grep -Ei 'PackageManager|PackageInstaller|INSTALL_FAILED|Failure|parse|dex|sign|manifest|version|native' | tail -300 | tee -a diagnostic/emulator/pocketai-flutter-smoke-install.txt
+            fi
+
+            echo "===== INSTALL TEST: Full native APK =====" | tee diagnostic/emulator/app-release-install.txt
+            adb install -r build/app/outputs/flutter-apk/app-release.apk > /tmp/native-install-output.txt 2>&1
+            RC=$?
+            cat /tmp/native-install-output.txt | tee -a diagnostic/emulator/app-release-install.txt
+            echo "EXIT_CODE=$RC" | tee -a diagnostic/emulator/app-release-install.txt
+            echo "--- PM PATH ---" | tee -a diagnostic/emulator/app-release-install.txt
+            adb shell pm path com.pocketai.pocket_ai_server 2>&1 | tee -a diagnostic/emulator/app-release-install.txt
+            if [ "$RC" -ne 0 ]; then
+              echo "--- PACKAGE MANAGER LOG ---" | tee -a diagnostic/emulator/app-release-install.txt
+              adb logcat -d -v time -t 500 2>&1 | grep -Ei 'PackageManager|PackageInstaller|INSTALL_FAILED|Failure|parse|dex|sign|manifest|version|native' | tail -300 | tee -a diagnostic/emulator/app-release-install.txt
+            fi
 
             exit 0
 
