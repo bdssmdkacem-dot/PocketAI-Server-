@@ -64,6 +64,28 @@ text = (
     + text[insert_at:]
 )
 
+# The CI APK is an installable test artifact. The generated Flutter scaffold
+# may leave release unsigned, so explicitly use the generated debug keystore
+# for this non-production CI build. Production signing will be added separately.
+release = re.search(r"(?s)buildTypes\s*\{.*?^\s*release\s*\{", text, re.MULTILINE)
+if not release:
+    raise SystemExit("release buildType block was not found in android/app/build.gradle.kts")
+
+release_body_start = release.end()
+next_block = text.find("\n    }", release_body_start)
+if next_block == -1:
+    raise SystemExit("release buildType closing block was not found")
+
+release_body = text[release_body_start:next_block]
+if "signingConfig" not in release_body:
+    text = (
+        text[:release_body_start]
+        + '''
+        signingConfig = signingConfigs.getByName("debug")
+'''
+        + text[release_body_start:]
+    )
+
 app_gradle.write_text(text)
 
 # AGP understands this injected ABI property and uses it for native builds.
@@ -82,3 +104,4 @@ print("Configured Android native build:")
 print(f"  ndkVersion = {ndk_version}")
 print("  abiFilters = arm64-v8a")
 print("  android.injected.build.abi = arm64-v8a")
+print("  release signing = debug keystore (CI test artifact)")
