@@ -12,7 +12,18 @@ Repository: https://github.com/bdssmdkacem-dot/PocketAI-Server-
 
 ## Product vision
 
-PocketAI Server will make an Android phone usable as a **local AI inference server** on the user's LAN.
+PocketAI Server will evolve into a **local AI platform** with two complementary roles:
+
+1. **Android local AI server** — runs GGUF models locally through llama.cpp and exposes an OpenAI-compatible API on the LAN.
+2. **Computer Agent gateway** — allows an authorized computer-side agent to receive tasks from PocketAI and perform controlled tasks in browsers, files, terminals and desktop applications.
+
+The intended experience:
+
+```text
+📱 User → PocketAI Server → Local AI reasoning → Computer Agent → 💻 Computer → Result / evidence → 📱 PocketAI
+```
+
+The goal is not unrestricted remote control. Login, purchases, account changes, deletion, sending messages, financial actions and other consequential operations should support explicit confirmation and configurable permissions.
 
 The final application is intended to provide:
 
@@ -43,8 +54,8 @@ The phone remains the place where the model runs. No cloud AI provider is requir
 ├──────────────────────────────────────────────┤
 │ Flutter UI                                   │
 │                                              │
-│ Dashboard • Models • Server • API • Logs     │
-│ Diagnostics • Settings                      │
+│ Dashboard • Models • Server • Agent • Tasks │
+│ Playground • Logs • Diagnostics • Settings │
 ├──────────────────────────────────────────────┤
 │ Android Native Layer                         │
 │                                              │
@@ -91,6 +102,51 @@ Generated tokens
     ▼
 HTTP streaming response
 ```
+
+---
+
+## Computer Agent
+
+The computer-side component is a first-class product component, not a temporary script.
+
+### Agent responsibilities
+
+- securely pair with PocketAI over the local network
+- authenticate and identify the computer
+- advertise available capabilities
+- receive structured tasks
+- observe computer state
+- invoke only allowed tools
+- report progress
+- verify results
+- return structured results and evidence
+- stop safely when permissions are insufficient or execution is ambiguous
+
+### Planned tool categories
+
+- **Browser:** open, navigate, click, type, select, inspect, download, screenshots
+- **Files:** list, read, write, move, rename and organize
+- **Shell:** approved commands and scripts
+- **Desktop:** application launch, windows, keyboard/mouse and accessibility/UI inspection
+- **APIs:** HTTP requests and local integrations
+
+The initial implementation should prioritize browser automation, followed by files, desktop and shell tools behind the same permission system.
+
+### Agent protocol
+
+PocketAI and the computer agent will communicate using a versioned structured protocol. The OpenAI-compatible API remains dedicated to model inference; the Agent Protocol is dedicated to controlled task execution.
+
+Planned lifecycle:
+
+```text
+QUEUED → PLANNING → WAITING_FOR_PERMISSION → EXECUTING → VERIFYING → COMPLETED
+```
+
+### Security model
+
+The computer agent must not behave like an unrestricted remote shell. Planned controls include secure pairing, device identity, authenticated LAN communication, capability discovery, per-tool permissions, confirmation for sensitive operations, task cancellation, revocation, audit logging and safe defaults.
+
+The core execution loop is **observe → act → verify**. A click or successful command is not proof that the requested task succeeded until the expected result is checked.
 
 ---
 
@@ -439,7 +495,63 @@ https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-t
 
 ---
 
-### Phase 6 — Complete UI
+### Phase 6 — Computer Agent foundation
+
+- agent runtime for Windows/Linux/macOS where practical
+- secure pairing and device identity
+- capability discovery
+- versioned Agent Protocol
+- connection/reconnection
+- task queue and cancellation
+- progress and result reporting
+
+**Exit condition:** PocketAI can pair with a computer and execute a harmless test task under explicit permissions.
+
+---
+
+### Phase 7 — Browser automation
+
+- browser observation and navigation
+- click/type/select
+- DOM/accessibility inspection
+- downloads and screenshots
+- evidence collection
+- action verification
+- recovery from page changes
+
+**Exit condition:** predefined browser tasks complete reliably with verifiable results.
+
+---
+
+### Phase 8 — Desktop, files and shell tools
+
+- file operations
+- desktop application control
+- keyboard/mouse control where appropriate
+- approved shell commands and scripts
+- tool-specific permissions
+- audit logging
+
+**Exit condition:** each tool category works independently behind the permission system.
+
+---
+
+### Phase 9 — Agent intelligence and orchestration
+
+- task planning
+- tool selection
+- observe → act → verify loop
+- bounded retries
+- ambiguity detection
+- policy enforcement
+- confirmation requests
+- structured task history
+
+**Exit condition:** natural-language tasks can become controlled, observable and recoverable execution plans.
+
+---
+
+### Phase 10 — Complete UI
 
 Planned sections:
 
@@ -467,7 +579,7 @@ Dashboard metrics will include, where available:
 
 ---
 
-### Phase 7 — Reliability and security
+### Phase 11 — Reliability and security
 
 - authentication hardening
 - malformed-request handling
@@ -481,7 +593,7 @@ Dashboard metrics will include, where available:
 
 ---
 
-### Phase 8 — Production release
+### Phase 12 — Production release
 
 Only after the application passes the phone-based functional test cycle:
 
@@ -518,6 +630,12 @@ pocketai-diagnostic.yml
     ├── native inspection
     ├── signing verification
     └── Android PackageManager diagnostics
+
+agent-ci.yml
+    ├── agent unit tests
+    ├── protocol tests
+    ├── security tests
+    └── integration tests
 
 android-release.yml
     ├── release build
@@ -574,6 +692,17 @@ PocketAI-Server-/
 │   │       └── AndroidManifest.xml
 │   └── pocketai_template/
 │
+├── agent/
+│   ├── runtime/
+│   ├── protocol/
+│   ├── tools/
+│   │   ├── browser/
+│   │   ├── files/
+│   │   ├── shell/
+│   │   └── desktop/
+│   ├── security/
+│   └── tests/
+│
 ├── scripts/
 │   ├── fetch_llama_cpp.sh
 │   └── configure_android_native.py
@@ -611,7 +740,12 @@ PocketAI Server will be considered ready for production only when all of the fol
 - [ ] Foreground service works
 - [ ] Server survives the intended lifecycle tests
 - [ ] Model management works
-- [ ] Logs are usable
+- [ ] Computer Agent pairs securely
+- [ ] Agent permissions work
+- [ ] Browser automation works
+- [ ] Task cancellation works
+- [ ] Task verification works
+- [ ] Agent logs are usable
 - [ ] Diagnostics pass
 - [ ] Flutter tests pass
 - [ ] Static APK validation passes
