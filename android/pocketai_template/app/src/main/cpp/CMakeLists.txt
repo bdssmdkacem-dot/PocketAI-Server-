@@ -29,5 +29,5 @@ target_include_directories(pocket_ai PRIVATE
 target_link_libraries(pocket_ai
     PRIVATE
     llama
-    log_lib
+    ${log_lib}
 )
