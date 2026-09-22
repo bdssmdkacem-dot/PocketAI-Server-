@@ -40,34 +40,18 @@ jobs:
       - name: Fetch pinned llama.cpp
         run: bash scripts/fetch_llama_cpp.sh
 
-      - name: Build llama.cpp for Android arm64
-        run: |
-          cmake \
-            -S third_party/llama.cpp \
-            -B build/llama-android \
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-28 \
-            -DGGML_NATIVE=OFF \
-            -DGGML_OPENMP=OFF \
-            -DGGML_LLAMAFILE=OFF \
-            -DLLAMA_OPENSSL=OFF \
-            -DLLAMA_BUILD_COMMON=OFF \
-            -DLLAMA_BUILD_TESTS=OFF \
-            -DLLAMA_BUILD_TOOLS=OFF \
-            -DLLAMA_BUILD_EXAMPLES=OFF \
-            -DLLAMA_BUILD_SERVER=OFF \
-            -DLLAMA_BUILD_APP=OFF \
-            -DBUILD_SHARED_LIBS=ON
-          cmake --build build/llama-android --config Release -j2
-
       - name: Restore PocketAI native files
         run: |
           mkdir -p android/app/src/main/kotlin/com/pocketai/server
           mkdir -p android/app/src/main/cpp
           cp android/pocketai_template/app/src/main/kotlin/com/pocketai/server/MainActivity.kt android/app/src/main/kotlin/com/pocketai/server/MainActivity.kt
+          cp android/pocketai_template/app/src/main/kotlin/com/pocketai/server/NativeAi.kt android/app/src/main/kotlin/com/pocketai/server/NativeAi.kt
           cp android/pocketai_template/app/src/main/cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
           cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
+
+      - name: Enable Android externalNativeBuild
+        run: |
+          python3 scripts/configure_android_native.py
 
       - name: Get packages
         run: flutter pub get
