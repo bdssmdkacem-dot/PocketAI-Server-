@@ -1,0 +1,22 @@
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+
+# Android
+.gradle/
+local.properties
+*.iml
+.idea/
+android/.idea/
+
+# Models
+models/*.gguf
+models/*.bin
+models/*.safetensors
+!models/.gitkeep
