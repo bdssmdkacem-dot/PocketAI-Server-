@@ -128,7 +128,7 @@ jobs:
           if [ ! -f "$KEYSTORE" ]; then
             keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass android --ks-key-alias AndroidDebugKey "$APK"
+          "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
 
       - name: Diagnose APK compatibility
