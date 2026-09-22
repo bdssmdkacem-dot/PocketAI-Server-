@@ -88,6 +88,32 @@ jobs:
           "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
 
+      - name: Diagnose APK compatibility
+        run: |
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          AAPT2="$(dirname "$APKSIGNER")/aapt2"
+          ZIPALIGN="$(dirname "$APKSIGNER")/zipalign"
+
+          echo "=== APK FILE ==="
+          ls -lh "$APK"
+          sha256sum "$APK"
+
+          echo "=== AAPT2 BADGING ==="
+          "$AAPT2" dump badging "$APK"
+
+          echo "=== APK NATIVE ABIS ==="
+          unzip -Z1 "$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\1#' | sort -u
+
+          echo "=== ZIPALIGN ==="
+          "$ZIPALIGN" -c -P 4 -v 4 "$APK"
+
+          echo "=== APK SIGNATURE ==="
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+          echo "=== MANIFEST PACKAGE / SDK ==="
+          "$AAPT2" dump xmltree "$APK" AndroidManifest.xml | grep -E 'package=|minSdkVersion=|targetSdkVersion=|versionCode=|versionName=' || true
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
