@@ -62,6 +62,56 @@ jobs:
 
       - name: Get packages
         run: flutter pub get
+
+      - name: Build Flutter-only install smoke APK
+        run: |
+          set -e
+          cp android/app/build.gradle.kts /tmp/pocketai-build.gradle.kts
+          rm -rf android/app/src/main/cpp
+          rm -rf android/app/src/main/jniLibs
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          start = s.find("externalNativeBuild {")
+          if start != -1:
+              depth = 0
+              end = None
+              for i in range(start, len(s)):
+                  if s[i] == "{":
+                      depth += 1
+                  elif s[i] == "}":
+                      depth -= 1
+                      if depth == 0:
+                          end = i + 1
+                          break
+              if end:
+                  s = s[:start] + s[end:]
+          p.write_text(s)
+          PY
+          flutter build apk --release --target-platform android-arm64
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk
+
+      - name: Sign Flutter-only smoke APK
+        run: |
+          APK="build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk"
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          KEYSTORE="$HOME/.android/debug.keystore"
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$KEYSTORE" ]; then
+            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+      - name: Restore PocketAI native build
+        run: |
+          cp /tmp/pocketai-build.gradle.kts android/app/build.gradle.kts
+          mkdir -p android/app/src/main/cpp
+          cp android/pocketai_template/app/src/main/cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
+          cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
+          python3 scripts/configure_android_native.py
+
       - name: Analyze
         run: flutter analyze
       - name: Test
@@ -73,19 +123,12 @@ jobs:
         run: |
           APK="build/app/outputs/flutter-apk/app-release.apk"
           APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
-          if [ -z "$APKSIGNER" ]; then
-            echo "apksigner was not found."
-            exit 1
-          fi
-
           KEYSTORE="$HOME/.android/debug.keystore"
           mkdir -p "$HOME/.android"
-
           if [ ! -f "$KEYSTORE" ]; then
             keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-
-          "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+          "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass android --ks-key-alias AndroidDebugKey "$APK"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
 
       - name: Diagnose APK compatibility
@@ -94,28 +137,24 @@ jobs:
           APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
           AAPT2="$(dirname "$APKSIGNER")/aapt2"
           ZIPALIGN="$(dirname "$APKSIGNER")/zipalign"
-
           echo "=== APK FILE ==="
           ls -lh "$APK"
           sha256sum "$APK"
-
           echo "=== AAPT2 BADGING ==="
           "$AAPT2" dump badging "$APK"
-
           echo "=== APK NATIVE ABIS ==="
           unzip -Z1 "$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\1#' | sort -u
-
           echo "=== ZIPALIGN ==="
           "$ZIPALIGN" -c -P 4 -v 4 "$APK"
-
           echo "=== APK SIGNATURE ==="
           "$APKSIGNER" verify --verbose --print-certs "$APK"
-
           echo "=== MANIFEST PACKAGE / SDK ==="
           "$AAPT2" dump xmltree "$APK" AndroidManifest.xml | grep -E 'package=|minSdkVersion=|targetSdkVersion=|versionCode=|versionName=' || true
 
-      - name: Upload APK
+      - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
           name: pocketai-server-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk
