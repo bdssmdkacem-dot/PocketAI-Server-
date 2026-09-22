@@ -18,25 +18,43 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+
       - name: Create Flutter Android platform scaffold
         run: |
           if [ ! -d android/app ]; then
             flutter create . --platforms=android --org com.pocketai --project-name pocket_ai_server
           fi
-      - name: Set up Android SDK tools
-        uses: android-actions/setup-android@v3
-      - name: Prepare Android NDK
+
+      - name: Prepare Android SDK and NDK
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "ndk;27.2.12479018"
-          echo "ANDROID_NDK=${ANDROID_SDK_ROOT}/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          if [ -z "${ANDROID_SDK_ROOT:-}" ]; then
+            export ANDROID_SDK_ROOT="${ANDROID_HOME}"
+          fi
+          if [ -z "${ANDROID_SDK_ROOT:-}" ] || [ ! -d "${ANDROID_SDK_ROOT}" ]; then
+            echo "Android SDK was not found on the GitHub runner."
+            exit 1
+          fi
+          if [ -d "${ANDROID_SDK_ROOT}/ndk/27.2.12479018" ]; then
+            echo "Using preinstalled NDK 27.2.12479018"
+            echo "ANDROID_NDK=${ANDROID_SDK_ROOT}/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          else
+            echo "Required NDK 27.2.12479018 is not preinstalled."
+            echo "Installed NDKs:"
+            ls -la "${ANDROID_SDK_ROOT}/ndk" || true
+            exit 1
+          fi
+
       - name: Fetch pinned llama.cpp
         run: bash scripts/fetch_llama_cpp.sh
+
       - name: Restore PocketAI native files
         run: |
           mkdir -p android/app/src/main/kotlin/com/pocketai/server
@@ -45,8 +63,10 @@ jobs:
           cp android/pocketai_template/app/src/main/kotlin/com/pocketai/server/NativeAi.kt android/app/src/main/kotlin/com/pocketai/server/NativeAi.kt
           cp android/pocketai_template/app/src/main/cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
           cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
+
       - name: Enable Android externalNativeBuild
         run: python3 scripts/configure_android_native.py
+
       - name: Get packages
         run: flutter pub get
       - name: Analyze
@@ -55,6 +75,7 @@ jobs:
         run: flutter test
       - name: Build release APK
         run: flutter build apk --release --target-platform android-arm64
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
