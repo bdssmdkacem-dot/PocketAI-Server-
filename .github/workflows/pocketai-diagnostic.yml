@@ -184,30 +184,28 @@ jobs:
             set +e
             mkdir -p diagnostic/emulator
             adb wait-for-device
-            {
-              echo "=== EMULATOR ==="
-              adb shell getprop ro.product.manufacturer
-              adb shell getprop ro.product.model
-              adb shell getprop ro.build.version.release
-              adb shell getprop ro.build.version.sdk
-              adb shell getprop ro.product.cpu.abilist
-              echo
-              echo "=== FEATURES ==="
-              adb shell pm list features
-            } | tee diagnostic/emulator/device.txt
+            echo "=== EMULATOR ===" | tee diagnostic/emulator/device.txt
+            adb shell getprop ro.product.manufacturer | tee -a diagnostic/emulator/device.txt
+            adb shell getprop ro.product.model | tee -a diagnostic/emulator/device.txt
+            adb shell getprop ro.build.version.release | tee -a diagnostic/emulator/device.txt
+            adb shell getprop ro.build.version.sdk | tee -a diagnostic/emulator/device.txt
+            adb shell getprop ro.product.cpu.abilist | tee -a diagnostic/emulator/device.txt
+            echo | tee -a diagnostic/emulator/device.txt
+            echo "=== FEATURES ===" | tee -a diagnostic/emulator/device.txt
+            adb shell pm list features | tee -a diagnostic/emulator/device.txt
 
             for APK in build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk build/app/outputs/flutter-apk/app-release.apk; do
               NAME="$(basename "$APK" .apk)"
-              echo "===== INSTALL TEST: $NAME =====" | tee diagnostic/emulator/"$NAME"-install.txt
+              echo "===== INSTALL TEST: $NAME =====" | tee "diagnostic/emulator/$NAME-install.txt"
               adb install -r "$APK" > /tmp/install-output.txt 2>&1
               RC=$?
-              cat /tmp/install-output.txt | tee -a diagnostic/emulator/"$NAME"-install.txt
-              echo "EXIT_CODE=$RC" | tee -a diagnostic/emulator/"$NAME"-install.txt
-              echo "--- PM PATH ---" | tee -a diagnostic/emulator/"$NAME"-install.txt
-              adb shell pm path com.pocketai.pocket_ai_server 2>&1 | tee -a diagnostic/emulator/"$NAME"-install.txt
+              cat /tmp/install-output.txt | tee -a "diagnostic/emulator/$NAME-install.txt"
+              echo "EXIT_CODE=$RC" | tee -a "diagnostic/emulator/$NAME-install.txt"
+              echo "--- PM PATH ---" | tee -a "diagnostic/emulator/$NAME-install.txt"
+              adb shell pm path com.pocketai.pocket_ai_server 2>&1 | tee -a "diagnostic/emulator/$NAME-install.txt"
               if [ "$RC" -ne 0 ]; then
-                echo "--- PACKAGE MANAGER LOG ---" | tee -a diagnostic/emulator/"$NAME"-install.txt
-                adb logcat -d -v time -t 500 2>&1 | grep -Ei 'PackageManager|PackageInstaller|INSTALL_FAILED|Failure|parse|dex|sign|manifest|version|native' | tail -300 | tee -a diagnostic/emulator/"$NAME"-install.txt
+                echo "--- PACKAGE MANAGER LOG ---" | tee -a "diagnostic/emulator/$NAME-install.txt"
+                adb logcat -d -v time -t 500 2>&1 | grep -Ei 'PackageManager|PackageInstaller|INSTALL_FAILED|Failure|parse|dex|sign|manifest|version|native' | tail -300 | tee -a "diagnostic/emulator/$NAME-install.txt"
               fi
             done
 
