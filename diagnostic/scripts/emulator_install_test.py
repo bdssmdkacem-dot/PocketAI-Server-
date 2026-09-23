@@ -68,19 +68,29 @@ rc, output = run_capture(
     timeout=180,
 )
 
+# Android's package manager can finish an install after the adb client times out.
+# Therefore pm path is authoritative for whether the package is actually present.
+pm_rc, pm_output = run_capture(
+    ["adb", "shell", "pm", "path", PACKAGE],
+    timeout=30,
+)
+installed = pm_rc == 0 and any(
+    line.strip().startswith("package:") for line in pm_output.splitlines()
+)
+effective_install = rc == 0 or installed
+
 with install_report.open("a", encoding="utf-8") as f:
     f.write(output)
-    f.write(f"EXIT_CODE={rc}\n")
+    f.write(f"INSTALL_COMMAND_RC={rc}\n")
+    f.write(f"INSTALL_COMMAND_TIMEOUT={rc == 124}\n")
+    f.write(f"INSTALL_VERIFIED_BY_PM={installed}\n")
+    f.write(f"INSTALL_VERIFIED={effective_install}\n")
     f.write("--- PACKAGE MANAGER ---\n")
-    pm_rc, pm_output = run_capture(
-        ["adb", "shell", "pm", "path", PACKAGE],
-        timeout=30,
-    )
     f.write(pm_output)
     f.write(f"PM_PATH_RC={pm_rc}\n")
     f.write("--- POST-INSTALL DIAGNOSTICS ---\n")
 
-    if rc == 0:
+    if effective_install:
         f.write("\n$ adb shell dumpsys package " + PACKAGE + "\n")
         cmd_rc, cmd_output = run_capture(
             ["adb", "shell", "dumpsys", "package", PACKAGE],
@@ -98,9 +108,10 @@ with install_report.open("a", encoding="utf-8") as f:
             timeout=60,
         )
         f.write(launch_output)
-        f.write(f"COMMAND_RC={launch_rc}\n")
+        f.write(f"LAUNCH_RC={launch_rc}\n")
 
-        time.sleep(5)
+        # The emulator is heavily loaded, so allow extra time for Flutter startup.
+        time.sleep(10)
 
         checks = [
             ("PIDOF", ["adb", "shell", "pidof", PACKAGE]),
@@ -117,7 +128,7 @@ with install_report.open("a", encoding="utf-8") as f:
         with launch_report.open("w", encoding="utf-8") as lf:
             lf.write("===== LAUNCH TEST =====\n")
             lf.write(f"PACKAGE={PACKAGE}\n")
-            lf.write("WAIT_AFTER_LAUNCH_SECONDS=5\n")
+            lf.write("WAIT_AFTER_LAUNCH_SECONDS=10\n")
             for label, command in checks:
                 check_rc, check_output = run_capture(command, timeout=60)
                 lf.write(f"\n--- {label} ---\n")
@@ -141,7 +152,7 @@ with install_report.open("a", encoding="utf-8") as f:
                 ["adb", "shell", "pidof", PACKAGE],
                 timeout=30,
             )
-            f.write(f"PIDOF_AFTER_5S={pid_output.strip()!r}\n")
+            f.write(f"PIDOF_AFTER_10S={pid_output.strip()!r}\n")
             f.write(f"PIDOF_RC={pid_rc}\n")
     else:
         log_rc, log_output = run_capture(
@@ -163,6 +174,7 @@ with install_report.open("a", encoding="utf-8") as f:
 )
 
 print(f"FLUTTER_X64_INSTALL_RC={rc}")
+print(f"INSTALL_VERIFIED={effective_install}")
 print(f"INSTALL_REPORT={install_report}")
 print(f"LAUNCH_REPORT={launch_report}")
 print(f"LOGCAT_REPORT={logcat_report}")
