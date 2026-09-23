@@ -191,9 +191,9 @@ jobs:
             adb shell getprop ro.product.cpu.abilist | tee -a diagnostic/emulator/device.txt
 
             echo "===== INSTALL TEST: Flutter x64 smoke APK =====" | tee diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
-            adb install -r build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk > /tmp/flutter-x64-install-output.txt 2>&1
-            FLUTTER_X64_RC=$?
-            cat /tmp/flutter-x64-install-output.txt | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
+            python3 -c 'import subprocess,sys; out="/tmp/flutter-x64-install-output.txt"; p=subprocess.run(["adb","install","-r","build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk"],stdout=open(out,"w"),stderr=subprocess.STDOUT,text=True,timeout=120); open("/tmp/flutter-x64-install-rc.txt","w").write(str(p.returncode))' || true
+            FLUTTER_X64_RC=$(cat /tmp/flutter-x64-install-rc.txt 2>/dev/null || echo 124)
+            cat /tmp/flutter-x64-install-output.txt 2>/dev/null | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
             echo "EXIT_CODE=$FLUTTER_X64_RC" | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
             echo "--- PM PATH ---" | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
             adb shell pm path com.pocketai.pocket_ai_server 2>&1 | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
