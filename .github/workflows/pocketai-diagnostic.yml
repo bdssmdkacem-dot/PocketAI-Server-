@@ -182,7 +182,6 @@ jobs:
           script: |
             set +e
             mkdir -p diagnostic/emulator
-            adb wait-for-device
 
             echo "=== EMULATOR ===" | tee diagnostic/emulator/device.txt
             adb shell getprop ro.product.manufacturer | tee -a diagnostic/emulator/device.txt
@@ -192,18 +191,68 @@ jobs:
             adb shell getprop ro.product.cpu.abilist | tee -a diagnostic/emulator/device.txt
 
             echo "===== INSTALL TEST: Flutter x64 smoke APK =====" | tee diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
-            python3 -c 'import subprocess; out="/tmp/flutter-x64-install-output.txt"; rc="/tmp/flutter-x64-install-rc.txt"; p=subprocess.run(["adb","install","-r","-t","build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk"],stdout=open(out,"w"),stderr=subprocess.STDOUT,text=True,timeout=120); open(rc,"w").write(str(p.returncode))' || true
-            FLUTTER_X64_RC=$(tr -d "\r\n " < /tmp/flutter-x64-install-rc.txt 2>/dev/null || printf "124")
-            cat /tmp/flutter-x64-install-output.txt 2>/dev/null | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
+            python3 - <<'PY'
+            import subprocess
+            from pathlib import Path
+
+            out = Path("/tmp/flutter-x64-install-output.txt")
+            rc = Path("/tmp/flutter-x64-install-rc.txt")
+            try:
+                p = subprocess.run(
+                    ["adb", "install", "-r", "-t", "build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk"],
+                    stdout=out.open("w"),
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    timeout=120,
+                )
+                code = p.returncode
+            except subprocess.TimeoutExpired:
+                code = 124
+                with out.open("a") as f:
+                    f.write("\nINSTALL_COMMAND_TIMEOUT=120s\n")
+            except Exception as e:
+                code = 125
+                with out.open("a") as f:
+                    f.write(f"INSTALL_COMMAND_ERROR={e!r}\n")
+            rc.write_text(str(code))
+            print(f"FLUTTER_X64_INSTALL_RC={code}")
+            PY
+
+            FLUTTER_X64_RC=$(cat /tmp/flutter-x64-install-rc.txt)
+            cat /tmp/flutter-x64-install-output.txt | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
             echo "EXIT_CODE=$FLUTTER_X64_RC" | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
-            echo "--- PM PATH ---" | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
+
+            echo "--- PACKAGE MANAGER ---" | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
             adb shell pm path com.pocketai.pocket_ai_server 2>&1 | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
 
-            python3 -c 'import subprocess; rc=int(open("/tmp/flutter-x64-install-rc.txt").read().strip()); f=open("diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt","a"); f.write("--- POST-INSTALL DIAGNOSTICS ---\\n"); cmds=[["adb","shell","pm","path","com.pocketai.pocket_ai_server"]]; cmds += [["adb","shell","dumpsys","package","com.pocketai.pocket_ai_server"]] if rc==0 else [["adb","logcat","-d","-v","time","-t","500"]]; [f.write("\\n".join([c if isinstance(c,str) else str(c) for c in []])) for _ in []]; import subprocess as sp; [f.write("\\n"+sp.run(c,stdout=sp.PIPE,stderr=sp.STDOUT,text=True).stdout) for c in cmds]; f.close()' || true
-            if [ "$FLUTTER_X64_RC" = "0" ]; then
-              adb shell monkey -p com.pocketai.pocket_ai_server 1 2>&1 | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
-              adb shell pidof com.pocketai.pocket_ai_server 2>&1 | tee -a diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt
-            fi
+            python3 - "$FLUTTER_X64_RC" <<'PY'
+            import subprocess
+            import sys
+            from pathlib import Path
+
+            rc = int(sys.argv[1])
+            report = Path("diagnostic/emulator/pocketai-flutter-smoke-x64-install.txt")
+            with report.open("a") as f:
+                f.write("--- POST-INSTALL DIAGNOSTICS ---\n")
+                if rc == 0:
+                    commands = [
+                        ["adb", "shell", "dumpsys", "package", "com.pocketai.pocket_ai_server"],
+                        ["adb", "shell", "monkey", "-p", "com.pocketai.pocket_ai_server", "1"],
+                        ["adb", "shell", "pidof", "com.pocketai.pocket_ai_server"],
+                    ]
+                else:
+                    commands = [
+                        ["adb", "shell", "logcat", "-d", "-v", "time", "-t", "500"],
+                    ]
+                for cmd in commands:
+                    f.write("\n$ " + " ".join(cmd) + "\n")
+                    try:
+                        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60)
+                        f.write(p.stdout)
+                        f.write(f"COMMAND_RC={p.returncode}\n")
+                    except Exception as e:
+                        f.write(f"COMMAND_ERROR={e!r}\n")
+            PY
 
             echo "ARM64 native APK is intentionally not installed on the x86_64 emulator." | tee diagnostic/emulator/arm64-install-skipped.txt
             echo "The ARM64 APK is the target for the physical ARM64 Android device." | tee -a diagnostic/emulator/arm64-install-skipped.txt
