@@ -218,7 +218,9 @@ jobs:
       - name: Diagnostic summary
         if: always()
         run: |
-          mkdir -p diagnostic
+          set +e
+          DIAG_DIR="$GITHUB_WORKSPACE/diagnostic"
+          mkdir -p "$DIAG_DIR"
           {
             echo "PocketAI Diagnostic Summary"
             echo "==========================="
@@ -227,7 +229,9 @@ jobs:
             echo "ARM64 native APK emulator installation: intentionally skipped due ABI mismatch"
             echo
             echo "The emulator installation file contains the exact adb/PackageManager result."
-          } | tee diagnostic/SUMMARY.txt
+          } > "$DIAG_DIR/SUMMARY.txt"
+          cat "$DIAG_DIR/SUMMARY.txt"
+          test -f "$DIAG_DIR/SUMMARY.txt"
 
       - name: Upload diagnostic bundle
         if: always()
