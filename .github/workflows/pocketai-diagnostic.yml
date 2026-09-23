@@ -120,7 +120,7 @@ jobs:
         run: |
           APK="build/app/outputs/flutter-apk/app-release.apk"
           BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass android --ks-key-alias AndroidDebugKey "$APK"
+          "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
 
       - name: Static APK diagnostics
         run: |
@@ -218,6 +218,7 @@ jobs:
       - name: Diagnostic summary
         if: always()
         run: |
+          mkdir -p diagnostic
           {
             echo "PocketAI Diagnostic Summary"
             echo "==========================="
