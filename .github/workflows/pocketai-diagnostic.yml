@@ -146,7 +146,9 @@ jobs:
           find /tmp/pocketai-cmake-x64 -type f -name '*.so' -print | sort
           NATIVE_LIB_DIR="/tmp/pocketai-cmake-x64/bin"
           test -d "$NATIVE_LIB_DIR"
-          for LIB in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+          test -f /tmp/pocketai-cmake-x64/libpocket_ai.so
+          cp /tmp/pocketai-cmake-x64/libpocket_ai.so android/app/src/main/jniLibs/x86_64/libpocket_ai.so
+          for LIB in libllama.so libggml.so libggml-base.so libggml-cpu.so; do
             test -f "$NATIVE_LIB_DIR/$LIB"
             cp "$NATIVE_LIB_DIR/$LIB" "android/app/src/main/jniLibs/x86_64/$LIB"
           done
@@ -196,7 +198,9 @@ jobs:
           cmake --build /tmp/pocketai-cmake-arm64 --target pocket_ai --parallel 2
           NATIVE_LIB_DIR="/tmp/pocketai-cmake-arm64/bin"
           test -d "$NATIVE_LIB_DIR"
-          for LIB in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+          test -f /tmp/pocketai-cmake-arm64/libpocket_ai.so
+          cp /tmp/pocketai-cmake-arm64/libpocket_ai.so android/app/src/main/jniLibs/arm64-v8a/libpocket_ai.so
+          for LIB in libllama.so libggml.so libggml-base.so libggml-cpu.so; do
             test -f "$NATIVE_LIB_DIR/$LIB"
             cp "$NATIVE_LIB_DIR/$LIB" "android/app/src/main/jniLibs/arm64-v8a/$LIB"
           done
