@@ -155,7 +155,9 @@ jobs:
           echo "=== Gradle failure report ==="
           find build -type f -path '*problems-report.html' -print 2>/dev/null | sort || true
           cp native-gradle.log ../diagnostic/native-gradle.log || true
-          exit $RC
+          if [ "$RC" -ne 0 ]; then
+            exit "$RC"
+          fi
           cd ..
           echo "=== Native outputs after CMake ==="
           find android/app/.cxx android/.cxx -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
