@@ -33,6 +33,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   String _status = 'Checking native engine…';
   String _version = '—';
+  String _runtime = '—';
+  String _device = '—';
 
   @override
   void initState() {
@@ -44,15 +46,23 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final result = await _native.invokeMethod<Map<dynamic, dynamic>>('status');
       if (!mounted) return;
+      final device = result?['device'] as Map<dynamic, dynamic>?;
+      final abis = (device?['supportedAbis'] as List<dynamic>?)?.join(', ') ?? 'Unknown';
+      final ramBytes = device?['totalRamBytes'] as num?;
+      final ramGb = ramBytes == null ? 'Unknown' : '${(ramBytes / 1073741824).toStringAsFixed(1)} GB';
       setState(() {
         _status = result?['status']?.toString() ?? 'Unknown';
         _version = result?['version']?.toString() ?? 'Unknown';
+        _runtime = result?['runtime']?.toString() ?? 'Unknown';
+        _device = '${device?['manufacturer'] ?? ''} ${device?['model'] ?? ''} • Android API ${device?['androidApi'] ?? '?'} • ABI $abis • RAM $ramGb';
       });
     } on PlatformException catch (error) {
       if (!mounted) return;
       setState(() {
         _status = 'Native error: ${error.message ?? error.code}';
         _version = 'Unavailable';
+        _runtime = 'Unavailable';
+        _device = 'Unavailable';
       });
     } catch (error) {
       if (!mounted) return;
@@ -80,20 +90,23 @@ class _DashboardPageState extends State<DashboardPage> {
                   const SizedBox(height: 12),
                   Text(_status == 'llama.cpp-linked' ? 'Native Ready' : _status, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
+                  Text(_runtime),
+                  const SizedBox(height: 8),
                   const Text('Flutter → MethodChannel → Kotlin → JNI → llama.cpp'),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
+          InfoTile(title: 'Device', value: _device),
           InfoTile(title: 'llama.cpp', value: _status),
           InfoTile(title: 'Version', value: _version),
           const InfoTile(title: 'Model', value: 'No model loaded'),
           const InfoTile(title: 'Server', value: 'Stopped'),
           const InfoTile(title: 'API', value: 'http://0.0.0.0:8080/v1'),
-          const InfoTile(title: 'Target', value: 'Android arm64-v8a'),
+          const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
           const SizedBox(height: 8),
-          FilledButton.icon(onPressed: _checkNativeEngine, icon: const Icon(Icons.refresh), label: const Text('Refresh native status')),
+          FilledButton.icon(onPressed: _checkNativeEngine, icon: const Icon(Icons.refresh), label: const Text('Refresh device & native status')),
         ],
       ),
     );
