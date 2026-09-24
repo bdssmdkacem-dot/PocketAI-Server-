@@ -198,5 +198,11 @@ print(f"FLUTTER_X64_INSTALL_RC={rc}")
 print(f"INSTALL_VERIFIED={effective_install}")
 print(f"INSTALL_REPORT={install_report}")
 print(f"LAUNCH_REPORT={launch_report}")
+runtime_verified = False
+if install_report.is_file():
+    report_text = install_report.read_text(encoding="utf-8")
+    runtime_verified = "NATIVE_RUNTIME_VERIFICATION=PASSED" in report_text
+
 print(f"LOGCAT_REPORT={logcat_report}")
-sys.exit(0)
+print(f"NATIVE_RUNTIME_VERIFICATION={runtime_verified}")
+sys.exit(0 if (effective_install and runtime_verified) else 1)
