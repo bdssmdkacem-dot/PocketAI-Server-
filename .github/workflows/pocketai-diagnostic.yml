@@ -140,15 +140,21 @@ jobs:
           ./gradlew :app:tasks --all | grep -E 'externalNativeBuild|buildCMake' | sort || true
           echo "=== Explicit native x64 build ==="
           set +e
-          ./gradlew :app:externalNativeBuildRelease --info --stacktrace
+          rm -f native-gradle.log
+          ./gradlew :app:externalNativeBuildRelease --no-daemon --console=plain --rerun-tasks --info --stacktrace > native-gradle.log 2>&1
           RC=$?
           echo "Gradle native build exit code: $RC"
+          echo "=== Gradle failure markers ==="
+          grep -nE 'FAILURE:|What went wrong:|Caused by:|Exception:|Exception in|CMake Error|ninja: error|error:' native-gradle.log | tail -120 || true
+          echo "=== Gradle log tail ==="
+          tail -220 native-gradle.log || true
           echo "=== Native build outputs ==="
           find app/.cxx .cxx -type f \( -name 'libpocket_ai.so' -o -name '*.so' \) -print 2>/dev/null | sort || true
           echo "=== CMake build directories ==="
           find app/.cxx .cxx -maxdepth 12 -type f -name build.ninja -print 2>/dev/null | sort || true
           echo "=== Gradle failure report ==="
           find build -type f -path '*problems-report.html' -print 2>/dev/null | sort || true
+          cp native-gradle.log ../diagnostic/native-gradle.log || true
           exit $RC
           cd ..
           echo "=== Native outputs after CMake ==="
