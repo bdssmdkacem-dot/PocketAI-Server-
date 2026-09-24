@@ -30,7 +30,10 @@ if ndk_count == 0:
     )
 
 # Configure CMake for the PocketAI native library.
-if "externalNativeBuild {" not in text:
+# Always configure the module-level CMake path explicitly. A generic
+# "externalNativeBuild {" string search is unsafe because nested blocks
+# may already exist in generated Flutter/AGP files.
+if 'path = file("src/main/cpp/CMakeLists.txt")' not in text:
     text = text.replace(
         "android {",
         '''android {
