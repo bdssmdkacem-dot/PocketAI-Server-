@@ -58,7 +58,7 @@ if not default_config:
 insert_at = default_config.end()
 text = (
     text[:insert_at]
-    + f'''\n        ndk {{\n            abiFilters.clear()\n            abiFilters += listOf("{abi}")\n        }}\n'''
+    + f'''\n        ndk {{\n            abiFilters.clear()\n            abiFilters += listOf("{abi}")\n        }}\n        externalNativeBuild {{\n            cmake {{\n                targets += listOf("pocket_ai")\n            }}\n        }}\n'''
     + text[insert_at:]
 )
 
