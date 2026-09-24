@@ -11,8 +11,8 @@ DIAG = ROOT / "diagnostic" / "emulator"
 DIAG.mkdir(parents=True, exist_ok=True)
 
 PACKAGE = "com.pocketai.pocket_ai_server"
-apk = ROOT / "build" / "app" / "outputs" / "flutter-apk" / "pocketai-flutter-smoke-x64.apk"
-install_report = DIAG / "pocketai-flutter-smoke-x64-install.txt"
+apk = ROOT / "build" / "app" / "outputs" / "flutter-apk" / "pocketai-native-x64.apk"
+install_report = DIAG / "pocketai-native-x64-install.txt"
 device_report = DIAG / "device.txt"
 launch_report = DIAG / "launch.txt"
 logcat_report = DIAG / "launch-logcat.txt"
@@ -51,7 +51,7 @@ with device_report.open("w", encoding="utf-8") as f:
             f.write(f"COMMAND_RC={rc}\n")
 
 install_report.write_text(
-    "===== INSTALL TEST: Flutter x64 smoke APK =====\n"
+    "===== INSTALL TEST: Native x64 runtime APK =====\n"
     f"APK={apk}\n"
     f"APK_EXISTS={apk.is_file()}\n",
     encoding="utf-8",
@@ -60,7 +60,7 @@ install_report.write_text(
 if not apk.is_file():
     with install_report.open("a", encoding="utf-8") as f:
         f.write("INSTALL_COMMAND_ERROR=APK not found\nEXIT_CODE=126\n")
-    print("Flutter x64 smoke APK not found", file=sys.stderr)
+    print("Native x64 runtime APK not found", file=sys.stderr)
     sys.exit(0)
 
 rc, output = run_capture(
@@ -140,7 +140,7 @@ with install_report.open("a", encoding="utf-8") as f:
             timeout=60,
         )
         logcat_report.write_text(
-            "===== LOGCAT AFTER FLUTTER SMOKE LAUNCH =====\n"
+            "===== LOGCAT AFTER NATIVE x64 LAUNCH =====\n"
             + log_output
             + f"\nLOGCAT_COMMAND_RC={log_rc}\n",
             encoding="utf-8",
