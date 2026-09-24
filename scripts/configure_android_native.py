@@ -8,6 +8,9 @@ gradle_properties = Path("android/gradle.properties")
 text = app_gradle.read_text()
 
 ndk_dir = Path(os.environ["ANDROID_NDK"])
+abi = os.environ.get("POCKETAI_ABI", "arm64-v8a").strip()
+if abi not in {"arm64-v8a", "x86_64"}:
+    raise SystemExit(f"Unsupported POCKETAI_ABI: {abi}")
 ndk_version = ndk_dir.name
 
 # Flutter's generated project uses ndkVersion = flutter.ndkVersion.
@@ -58,7 +61,7 @@ text = (
     + '''
         ndk {
             abiFilters.clear()
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += listOf(f"{abi}")
         }
 '''
     + text[insert_at:]
@@ -97,11 +100,11 @@ properties = re.sub(
 )
 if properties and not properties.endswith("\n"):
     properties += "\n"
-properties += "android.injected.build.abi=arm64-v8a\n"
+properties += f"android.injected.build.abi={abi}\n"
 gradle_properties.write_text(properties)
 
 print("Configured Android native build:")
 print(f"  ndkVersion = {ndk_version}")
-print("  abiFilters = arm64-v8a")
-print("  android.injected.build.abi = arm64-v8a")
+print(f"  abiFilters = {abi}")
+print(f"  android.injected.build.abi = {abi}")
 print("  release signing = debug keystore (CI test artifact)")
