@@ -29,23 +29,9 @@ if ndk_count == 0:
         1,
     )
 
-# Configure CMake for the PocketAI native library.
-# Always configure the module-level CMake path explicitly. A generic
-# "externalNativeBuild {" string search is unsafe because nested blocks
-# may already exist in generated Flutter/AGP files.
-if 'path = file("src/main/cpp/CMakeLists.txt")' not in text:
-    text = text.replace(
-        "android {",
-        '''android {
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-        }
-    }
-''',
-        1,
-    )
-
+# Native code is built by the CI workflow with standalone CMake/NDK and
+# packaged through src/main/jniLibs. Do not enable AGP externalNativeBuild:
+# having both CMake output and jniLibs creates duplicate .so entries.
 # Flutter's target-platform flag does not always constrain externalNativeBuild.
 # Explicitly restrict the Android native build to the ABI selected by POCKETAI_ABI.
 text = re.sub(
@@ -119,7 +105,7 @@ if 'useLegacyPackaging = false' not in text:
 
 app_gradle.write_text(text)
 
-# AGP understands this injected ABI property and uses it for native builds.
+# Keep the selected ABI available to the diagnostic Gradle environment.
 properties = gradle_properties.read_text() if gradle_properties.exists() else ""
 properties = re.sub(
     r"(?m)^\s*android\.injected\.build\.abi\s*=.*$",
