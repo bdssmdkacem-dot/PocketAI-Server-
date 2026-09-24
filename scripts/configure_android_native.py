@@ -87,6 +87,36 @@ if "signingConfig" not in release_body:
         + text[release_body_start:]
     )
 
+
+# Explicitly register the JNI library directory so the prebuilt native runtime
+# is unambiguously included in the Android main source set.
+if 'jniLibs.srcDirs("src/main/jniLibs")' not in text:
+    text = text.replace(
+        "android {",
+        '''android {
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
+''',
+        1,
+    )
+
+# Keep JNI libraries uncompressed in the diagnostic APK.
+if 'useLegacyPackaging = false' not in text:
+    text = text.replace(
+        "android {",
+        '''android {
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+''',
+        1,
+    )
+
 app_gradle.write_text(text)
 
 # AGP understands this injected ABI property and uses it for native builds.
