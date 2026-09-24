@@ -44,7 +44,7 @@ if "externalNativeBuild {" not in text:
     )
 
 # Flutter's target-platform flag does not always constrain externalNativeBuild.
-# Explicitly restrict the Android native build to arm64-v8a.
+# Explicitly restrict the Android native build to the ABI selected by POCKETAI_ABI.
 text = re.sub(
     r"(?s)\n\s*ndk\s*\{\s*abiFilters\s*=\s*[^}]+\}",
     "",
@@ -58,12 +58,7 @@ if not default_config:
 insert_at = default_config.end()
 text = (
     text[:insert_at]
-    + '''
-        ndk {
-            abiFilters.clear()
-            abiFilters += listOf(f"{abi}")
-        }
-'''
+    + f'''\n        ndk {{\n            abiFilters.clear()\n            abiFilters += listOf("{abi}")\n        }}\n'''
     + text[insert_at:]
 )
 
