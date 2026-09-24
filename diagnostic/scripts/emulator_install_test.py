@@ -123,6 +123,14 @@ with install_report.open("a", encoding="utf-8") as f:
                 "PACKAGE_STATE",
                 ["adb", "shell", "dumpsys", "package", PACKAGE],
             ),
+            (
+                "UI_DUMP",
+                ["adb", "shell", "uiautomator", "dump", "/sdcard/pocketai-ui.xml"],
+            ),
+            (
+                "UI_TEXT",
+                ["adb", "shell", "cat", "/sdcard/pocketai-ui.xml"],
+            ),
         ]
 
         with launch_report.open("w", encoding="utf-8") as lf:
@@ -154,6 +162,19 @@ with install_report.open("a", encoding="utf-8") as f:
             )
             f.write(f"PIDOF_AFTER_10S={pid_output.strip()!r}\n")
             f.write(f"PIDOF_RC={pid_rc}\n")
+            ui_rc, ui_output = run_capture(
+                ["adb", "shell", "cat", "/sdcard/pocketai-ui.xml"],
+                timeout=30,
+            )
+            native_ready = "Native Ready" in ui_output
+            runtime_ok = "OK;backend_initialized;version=" in ui_output
+            f.write(f"NATIVE_READY_IN_UI={native_ready}\n")
+            f.write(f"RUNTIME_CHECK_OK_IN_UI={runtime_ok}\n")
+            f.write(f"UI_TEXT_RC={ui_rc}\n")
+            if not (pid_rc == 0 and pid_output.strip() and native_ready and runtime_ok):
+                f.write("NATIVE_RUNTIME_VERIFICATION=FAILED\n")
+            else:
+                f.write("NATIVE_RUNTIME_VERIFICATION=PASSED\n")
     else:
         log_rc, log_output = run_capture(
             ["adb", "shell", "logcat", "-d", "-v", "time", "-t", "500"],
