@@ -22,3 +22,19 @@ Java_com_pocketai_server_NativeAi_version(JNIEnv* env, jobject) {
     const char* version = llama_version();
     return env->NewStringUTF(version != nullptr ? version : "unknown");
 }
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_com_pocketai_server_NativeAi_runtimeCheck(JNIEnv* env, jobject) {
+    try {
+        llama_backend_init();
+        const char* version = llama_version();
+        const std::string result =
+            std::string("OK;backend_initialized;version=") +
+            (version != nullptr ? version : "unknown");
+        llama_backend_free();
+        return env->NewStringUTF(result.c_str());
+    } catch (...) {
+        return env->NewStringUTF("FAIL;native_exception");
+    }
+}
