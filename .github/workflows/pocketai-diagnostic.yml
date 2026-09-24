@@ -136,12 +136,12 @@ jobs:
           sed -n '/defaultConfig {/,/^[[:space:]]*}/p' app/build.gradle.kts | head -80
           echo "=== Generated CMake configuration ==="
           sed -n '1,220p' app/src/main/cpp/CMakeLists.txt
-          echo "=== Gradle native tasks ==="
+          echo "=== Gradle native/CMake tasks ==="
           ./gradlew :app:tasks --all | grep -E 'externalNativeBuild|buildCMake' | sort || true
           echo "=== Explicit native x64 build ==="
           set +e
           rm -f native-gradle.log
-          ./gradlew :app:externalNativeBuildRelease --no-daemon --console=plain --rerun-tasks --info --stacktrace > native-gradle.log 2>&1
+          ./gradlew :app:assembleRelease --no-daemon --console=plain --rerun-tasks --info --stacktrace > native-gradle.log 2>&1
           RC=$?
           echo "Gradle native build exit code: $RC"
           echo "=== Gradle failure markers ==="
