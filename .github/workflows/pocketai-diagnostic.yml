@@ -132,11 +132,24 @@ jobs:
           cd ..
           echo "=== Explicit native x64 build ==="
           cd android
+          echo "=== Generated build.gradle.kts native configuration ==="
+          sed -n '/defaultConfig {/,/^[[:space:]]*}/p' app/build.gradle.kts | head -80
+          echo "=== Generated CMake configuration ==="
+          sed -n '1,220p' app/src/main/cpp/CMakeLists.txt
+          echo "=== Gradle native tasks ==="
+          ./gradlew :app:tasks --all | grep -E 'externalNativeBuild|buildCMake' | sort || true
+          echo "=== Explicit native x64 build ==="
+          set +e
           ./gradlew :app:externalNativeBuildRelease --info --stacktrace
+          RC=$?
+          echo "Gradle native build exit code: $RC"
           echo "=== Native build outputs ==="
           find app/.cxx .cxx -type f \( -name 'libpocket_ai.so' -o -name '*.so' \) -print 2>/dev/null | sort || true
           echo "=== CMake build directories ==="
-          find app/.cxx .cxx -maxdepth 8 -type f -name build.ninja -print 2>/dev/null | sort || true
+          find app/.cxx .cxx -maxdepth 12 -type f -name build.ninja -print 2>/dev/null | sort || true
+          echo "=== Gradle failure report ==="
+          find build -type f -path '*problems-report.html' -print 2>/dev/null | sort || true
+          exit $RC
           cd ..
           echo "=== Native outputs after CMake ==="
           find android/app/.cxx android/.cxx -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
