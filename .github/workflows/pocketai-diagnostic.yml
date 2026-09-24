@@ -127,9 +127,13 @@ jobs:
           rm -rf android/.cxx android/app/.cxx build
           flutter pub get
           echo "=== Gradle native x64 configuration ==="
+          cd android
           ./gradlew :app:tasks --all | grep -E 'externalNativeBuild.*Release|buildCMake.*Release' | sort || true
+          cd ..
           echo "=== Explicit native x64 build ==="
+          cd android
           ./gradlew :app:externalNativeBuildRelease --info
+          cd ..
           echo "=== Native outputs after CMake ==="
           find android/app/.cxx android/.cxx -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
           find android/app/.cxx android/.cxx -type f -name '*.so' -print 2>/dev/null | sort | head -50 || true
