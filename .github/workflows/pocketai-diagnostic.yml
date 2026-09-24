@@ -149,8 +149,14 @@ jobs:
           cp "$NATIVE_SO" android/app/src/main/jniLibs/x86_64/libpocket_ai.so
           file android/app/src/main/jniLibs/x86_64/libpocket_ai.so
           readelf -h android/app/src/main/jniLibs/x86_64/libpocket_ai.so | grep -E 'Class:|Machine:'
+          echo "=== Verify JNI source registration ==="
+          grep -n -A8 -B3 'jniLibs' android/app/build.gradle.kts || true
+          test -f android/app/src/main/jniLibs/x86_64/libpocket_ai.so
           echo "=== Build native x64 Flutter APK with jniLibs packaging ==="
           flutter build apk --release --target-platform android-x64
+          echo "=== Inspect merged native libraries before verification ==="
+          find build/app/intermediates -path '*merged_native_libs*' -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
+          find android/app/build -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk
           echo "=== Verify native x64 APK payload ==="
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep '^lib/' | sort || true
