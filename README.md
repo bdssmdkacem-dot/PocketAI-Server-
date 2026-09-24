@@ -28,7 +28,11 @@ The goal is not unrestricted remote control. Login, purchases, account changes, 
 The final application is intended to provide:
 
 - local GGUF model execution through llama.cpp
-- ARM64 Android native inference
+- broad Android device support through ABI-aware native packaging
+- ARM64 Android native inference as the primary production target
+- optional armeabi-v7a support where the native dependency stack remains compatible
+- x86_64 support for compatible Android devices and CI/emulator testing
+- runtime device capability detection and model compatibility checks
 - OpenAI-compatible HTTP API
 - streaming chat completions
 - local/LAN server operation
@@ -254,12 +258,41 @@ Planned model metadata:
 The application will also inspect device capabilities such as:
 
 - Android version
-- ARM ABI
-- CPU information
+- supported Android ABIs
+- CPU information and core count
 - available RAM
 - available storage
+- native backend availability where detectable
 
-This information will be used to make technically appropriate model recommendations.
+This information will be used to determine which PocketAI runtime and model sizes are technically appropriate. ABI compatibility and model compatibility are separate checks: a phone may support the native application while still being unable to run a particular model because of RAM, CPU or backend limits.
+
+### Android compatibility policy
+
+PocketAI is **not designed around one specific phone model**. The product target is a broad range of Android devices, within the limits imposed by Android versions, CPU architectures, available memory, storage and native backend compatibility.
+
+The planned ABI matrix is:
+
+| ABI | Role |
+|---|---|
+| `arm64-v8a` | Primary production ABI for modern Android phones |
+| `armeabi-v7a` | Compatibility target for older 32-bit ARM devices, if llama.cpp and all native dependencies build and test correctly |
+| `x86_64` | Compatible Android x86_64 devices and CI/emulator diagnostics |
+| `x86` | Not a priority unless a concrete supported-device requirement justifies it |
+
+The packaging strategy will use ABI-specific native libraries. For Google Play distribution, the preferred release format is **AAB**, allowing Android/Play to deliver the appropriate native variant. A universal APK may also be produced for direct installation when practical.
+
+This compatibility work is a **required foundation step before feature development**, not a later optimization.
+
+The first implementation gate is:
+
+1. Build each supported ABI that is declared supported.
+2. Verify that the expected native libraries are actually packaged under the correct ABI.
+3. Install the matching APK on a compatible emulator/device.
+4. Launch the application and verify JNI/native initialization.
+5. Detect the device ABI and capabilities at runtime.
+6. Reject incompatible models with a clear explanation instead of failing during native loading.
+
+We will not claim literal compatibility with every Android phone. The product goal is broad, testable Android compatibility with explicit ABI and model capability checks.
 
 ---
 
@@ -411,17 +444,27 @@ https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-t
 
 ## Development phases
 
-### Phase 0 — Build and installation foundation
+### Phase 0 — Android compatibility and build foundation
+
+This phase must be completed **before feature development expands**. The goal is to establish a stable native packaging foundation that is not tied to one phone model.
 
 - Flutter Android project
 - Android native integration
 - llama.cpp integration
-- ARM64 packaging
-- APK signing for test builds
+- ABI-aware native configuration
+- `arm64-v8a` production baseline
+- `armeabi-v7a` compatibility evaluation
+- `x86_64` emulator/compatible-device validation
+- runtime ABI and device capability detection
+- model compatibility checks
 - APK static diagnostics
 - PackageManager installation diagnostics
+- test APKs for each supported ABI
+- APK signing for test builds
 
-**Current priority:** finish this phase and determine why the current APK is rejected by the target phone.
+**Exit condition:** every ABI declared as supported builds with the correct native libraries, installs on a matching test environment, launches successfully, and passes native/JNI initialization checks.
+
+**Current priority:** complete and verify this compatibility foundation before moving deeper into inference, HTTP server and Agent features.
 
 ---
 
@@ -760,14 +803,23 @@ PocketAI Server will be considered ready for production only when all of the fol
 
 ## Current blocker
 
-The current APK build succeeds, but the target Android phone reports:
+The latest native x86_64 runtime diagnostic reached Android PackageManager but failed with:
 
 ```text
-L'application n'a pas été installée,
-car le package semble ne pas être valide.
+INSTALL_FAILED_NO_MATCHING_ABIS
+Failed to extract native libraries, res=-113
 ```
 
-The project therefore prioritizes identifying the exact Android PackageManager installation failure before making further architectural changes.
+This was an ABI configuration mismatch: the diagnostic requested an x86_64 APK while the native Gradle configuration was forcing `arm64-v8a`. The native configuration has now been made ABI-aware so the requested test ABI can be built explicitly.
+
+The important conclusion is that this failure does **not** establish a llama.cpp/JNI runtime failure; the APK was rejected before the application could launch.
+
+The next validation is therefore:
+
+1. rebuild the native x86_64 diagnostic with `POCKETAI_ABI=x86_64`;
+2. prove installation and launch on the x86_64 emulator;
+3. rebuild the production baseline with `POCKETAI_ABI=arm64-v8a`;
+4. install and test that ARM64 build on the real Android phone.
 
 The dedicated diagnostic workflow is:
 
