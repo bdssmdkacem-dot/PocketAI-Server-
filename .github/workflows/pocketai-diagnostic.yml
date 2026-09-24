@@ -121,8 +121,7 @@ jobs:
       - name: Build full native x64 runtime-test APK
         run: |
           set -e
-          # Force a fresh native build. The Flutter-only smoke build intentionally
-          # removed externalNativeBuild and must not leave a reusable Gradle cache.
+          # Force a fresh native build after the Flutter-only smoke build.
           flutter clean
           rm -rf android/.cxx android/app/.cxx build
           flutter pub get
@@ -131,12 +130,9 @@ jobs:
 
           echo "=== Verify native x64 APK payload ==="
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep '^lib/' | sort
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -q '^lib/x86_64/libpocket_ai\.so$'
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -q '^lib/x86_64/libllama\.so$'
-          echo "Native x64 payload verified: lib/x86_64/libpocket_ai.so + lib/x86_64/libllama.so"
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -q '^lib/x86_64/libpocket_ai\.so
 
       - name: Sign full native x64 runtime-test APK
-        run: |
         run: |
           APK="build/app/outputs/flutter-apk/pocketai-native-x64.apk"
           BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
@@ -246,6 +242,8 @@ jobs:
             build/app/outputs/flutter-apk/app-release.apk
 
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -q '^lib/x86_64/libllama\.so
+
+      - name: Sign full native x64 runtime-test APK
         run: |
           APK="build/app/outputs/flutter-apk/pocketai-native-x64.apk"
           BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
