@@ -19,6 +19,7 @@ class MainActivity : FlutterActivity() {
                             "ready" to nativeAi.isReady(),
                             "status" to nativeAi.status(),
                             "version" to nativeAi.version(),
+                            "runtime" to nativeAi.runtimeCheck(),
                         ),
                     )
                     else -> result.notImplemented()
