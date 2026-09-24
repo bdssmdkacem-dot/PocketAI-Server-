@@ -104,6 +104,8 @@ jobs:
             keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
           "$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+          mkdir -p diagnostic/apks
+          cp "$APK" diagnostic/apks/pocketai-flutter-smoke-x64.apk
 
       - name: Restore native build
         run: |
@@ -128,7 +130,7 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk
           echo "=== Verify native x64 APK payload ==="
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep '^lib/' | sort
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -q '^lib/x86_64/libpocket_ai\.so
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -q "^lib/x86_64/libpocket_ai\\.so$"
 
       - name: Sign full native x64 runtime-test APK
         run: |
@@ -149,7 +151,7 @@ jobs:
 
       - name: Sign full ARM64 APK
         run: |
-          APK="build/app/outputs/flutter-apk/app-release.apk"
+          APK="build/app/outputs/flutter-apk/pocketai-native-arm64.apk"
           BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
           "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
 
@@ -169,7 +171,7 @@ jobs:
             ls -lh build/app/outputs/flutter-apk/*.apk
             echo "=== SHA256 ==="
             sha256sum build/app/outputs/flutter-apk/*.apk
-            for APK in build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk build/app/outputs/flutter-apk/app-release.apk; do
+            for APK in diagnostic/apks/pocketai-flutter-smoke-x64.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk build/app/outputs/flutter-apk/pocketai-native-arm64.apk; do
               echo
               echo "===== $APK ====="
               echo "--- AAPT2 BADGING ---"
@@ -238,6 +240,6 @@ jobs:
           if-no-files-found: warn
           path: |
             diagnostic/
-            build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk
+            diagnostic/apks/pocketai-flutter-smoke-x64.apk
             build/app/outputs/flutter-apk/pocketai-native-x64.apk
             build/app/outputs/flutter-apk/pocketai-native-arm64.apk
