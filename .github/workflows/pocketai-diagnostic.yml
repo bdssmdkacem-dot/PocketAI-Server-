@@ -132,7 +132,11 @@ jobs:
           cd ..
           echo "=== Explicit native x64 build ==="
           cd android
-          ./gradlew :app:externalNativeBuildRelease --info
+          ./gradlew :app:externalNativeBuildRelease --info --stacktrace
+          echo "=== Native build outputs ==="
+          find app/.cxx .cxx -type f \( -name 'libpocket_ai.so' -o -name '*.so' \) -print 2>/dev/null | sort || true
+          echo "=== CMake build directories ==="
+          find app/.cxx .cxx -maxdepth 8 -type f -name build.ninja -print 2>/dev/null | sort || true
           cd ..
           echo "=== Native outputs after CMake ==="
           find android/app/.cxx android/.cxx -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
