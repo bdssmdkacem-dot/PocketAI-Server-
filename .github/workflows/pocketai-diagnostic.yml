@@ -120,8 +120,236 @@ jobs:
 
       - name: Build full native x64 runtime-test APK
         run: |
+          set -e
+          # Force a fresh native build. The Flutter-only smoke build intentionally
+          # removed externalNativeBuild and must not leave a reusable Gradle cache.
+          flutter clean
+          rm -rf android/.cxx android/app/.cxx build
+          flutter pub get
           flutter build apk --release --target-platform android-x64
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk
+
+          echo "=== Verify native x64 APK payload ==="
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep '^lib/' | sort
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -q '^lib/x86_64/libpocket_ai\.so
+        run: |
+          APK="build/app/outputs/flutter-apk/pocketai-native-x64.apk"
+          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+
+      - name: Configure native ARM64 release build
+        env:
+          POCKETAI_ABI: arm64-v8a
+        run: python3 scripts/configure_android_native.py
+
+      - name: Build full native ARM64 APK
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Sign full ARM64 APK
+        run: |
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+
+      - name: Static APK diagnostics
+        run: |
+          set +e
+          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
+          mkdir -p diagnostic
+          {
+            echo "PocketAI Android Diagnostic"
+            echo "Commit: $GITHUB_SHA"
+            echo "=== Flutter ==="
+            flutter --version
+            echo "=== Java ==="
+            java -version 2>&1
+            echo "=== APK files ==="
+            ls -lh build/app/outputs/flutter-apk/*.apk
+            echo "=== SHA256 ==="
+            sha256sum build/app/outputs/flutter-apk/*.apk
+            for APK in build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk build/app/outputs/flutter-apk/app-release.apk; do
+              echo
+              echo "===== $APK ====="
+              echo "--- AAPT2 BADGING ---"
+              "$BT/aapt2" dump badging "$APK"
+              echo "--- MANIFEST ---"
+              "$BT/aapt2" dump xmltree "$APK" AndroidManifest.xml | grep -E 'package=|versionCode=|versionName=|minSdkVersion=|targetSdkVersion=|uses-permission|uses-feature|uses-sdk' || true
+              echo "--- NATIVE ABIS ---"
+              unzip -Z1 "$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\1#' | sort -u || true
+              echo "--- NATIVE LIBRARIES ---"
+              unzip -Z1 "$APK" | grep -E '(^|/)lib.*\.so$' | sort || true
+              echo "--- ELF HEADERS ---"
+              rm -rf /tmp/apk_extract
+              mkdir -p /tmp/apk_extract
+              unzip -q "$APK" -d /tmp/apk_extract || true
+              find /tmp/apk_extract/lib -name '*.so' -type f -print0 2>/dev/null | while IFS= read -r -d '' SO; do
+                echo "FILE: $SO"
+                file "$SO" || true
+                readelf -h "$SO" 2>/dev/null | grep -E 'Class:|Machine:' || true
+              done
+              echo "--- ZIPALIGN ---"
+              "$BT/zipalign" -c -P 4 -v 4 "$APK"
+              echo "--- SIGNATURE ---"
+              "$BT/apksigner" verify --verbose --print-certs "$APK"
+            done
+          } | tee diagnostic/report.txt
+
+      - name: Android 13 x86_64 emulator Flutter UI install test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 2048M
+          disk-size: 4096M
+          force-avd-creation: true
+          disable-animations: false
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect
+          script: python3 diagnostic/scripts/emulator_install_test.py
+
+      - name: Diagnostic summary
+        if: always()
+        run: |
+          set +e
+          DIAG_DIR="$GITHUB_WORKSPACE/diagnostic"
+          mkdir -p "$DIAG_DIR"
+          {
+            echo "PocketAI Diagnostic Summary"
+            echo "==========================="
+            echo "Flutter/UI x64 APK: built, signed and tested on Android 13 x86_64 emulator"
+            echo "Full native ARM64 APK: built, signed and statically checked"
+            echo "ARM64 native APK emulator installation: intentionally skipped due ABI mismatch"
+            echo
+            echo "The emulator installation file contains the exact adb/PackageManager result."
+          } > "$DIAG_DIR/SUMMARY.txt"
+          cat "$DIAG_DIR/SUMMARY.txt"
+          test -f "$DIAG_DIR/SUMMARY.txt"
+
+      - name: Upload diagnostic bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketai-android-diagnostic
+          if-no-files-found: warn
+          path: |
+            diagnostic/
+            build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk
+            build/app/outputs/flutter-apk/pocketai-native-x64.apk
+            build/app/outputs/flutter-apk/app-release.apk
+
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -q '^lib/x86_64/libllama\.so
+        run: |
+          APK="build/app/outputs/flutter-apk/pocketai-native-x64.apk"
+          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+
+      - name: Configure native ARM64 release build
+        env:
+          POCKETAI_ABI: arm64-v8a
+        run: python3 scripts/configure_android_native.py
+
+      - name: Build full native ARM64 APK
+        run: flutter build apk --release --target-platform android-arm64
+
+      - name: Sign full ARM64 APK
+        run: |
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
+          "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+
+      - name: Static APK diagnostics
+        run: |
+          set +e
+          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
+          mkdir -p diagnostic
+          {
+            echo "PocketAI Android Diagnostic"
+            echo "Commit: $GITHUB_SHA"
+            echo "=== Flutter ==="
+            flutter --version
+            echo "=== Java ==="
+            java -version 2>&1
+            echo "=== APK files ==="
+            ls -lh build/app/outputs/flutter-apk/*.apk
+            echo "=== SHA256 ==="
+            sha256sum build/app/outputs/flutter-apk/*.apk
+            for APK in build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk build/app/outputs/flutter-apk/app-release.apk; do
+              echo
+              echo "===== $APK ====="
+              echo "--- AAPT2 BADGING ---"
+              "$BT/aapt2" dump badging "$APK"
+              echo "--- MANIFEST ---"
+              "$BT/aapt2" dump xmltree "$APK" AndroidManifest.xml | grep -E 'package=|versionCode=|versionName=|minSdkVersion=|targetSdkVersion=|uses-permission|uses-feature|uses-sdk' || true
+              echo "--- NATIVE ABIS ---"
+              unzip -Z1 "$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\1#' | sort -u || true
+              echo "--- NATIVE LIBRARIES ---"
+              unzip -Z1 "$APK" | grep -E '(^|/)lib.*\.so$' | sort || true
+              echo "--- ELF HEADERS ---"
+              rm -rf /tmp/apk_extract
+              mkdir -p /tmp/apk_extract
+              unzip -q "$APK" -d /tmp/apk_extract || true
+              find /tmp/apk_extract/lib -name '*.so' -type f -print0 2>/dev/null | while IFS= read -r -d '' SO; do
+                echo "FILE: $SO"
+                file "$SO" || true
+                readelf -h "$SO" 2>/dev/null | grep -E 'Class:|Machine:' || true
+              done
+              echo "--- ZIPALIGN ---"
+              "$BT/zipalign" -c -P 4 -v 4 "$APK"
+              echo "--- SIGNATURE ---"
+              "$BT/apksigner" verify --verbose --print-certs "$APK"
+            done
+          } | tee diagnostic/report.txt
+
+      - name: Android 13 x86_64 emulator Flutter UI install test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 2048M
+          disk-size: 4096M
+          force-avd-creation: true
+          disable-animations: false
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect
+          script: python3 diagnostic/scripts/emulator_install_test.py
+
+      - name: Diagnostic summary
+        if: always()
+        run: |
+          set +e
+          DIAG_DIR="$GITHUB_WORKSPACE/diagnostic"
+          mkdir -p "$DIAG_DIR"
+          {
+            echo "PocketAI Diagnostic Summary"
+            echo "==========================="
+            echo "Flutter/UI x64 APK: built, signed and tested on Android 13 x86_64 emulator"
+            echo "Full native ARM64 APK: built, signed and statically checked"
+            echo "ARM64 native APK emulator installation: intentionally skipped due ABI mismatch"
+            echo
+            echo "The emulator installation file contains the exact adb/PackageManager result."
+          } > "$DIAG_DIR/SUMMARY.txt"
+          cat "$DIAG_DIR/SUMMARY.txt"
+          test -f "$DIAG_DIR/SUMMARY.txt"
+
+      - name: Upload diagnostic bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketai-android-diagnostic
+          if-no-files-found: warn
+          path: |
+            diagnostic/
+            build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk
+            build/app/outputs/flutter-apk/pocketai-native-x64.apk
+            build/app/outputs/flutter-apk/app-release.apk
+
+          echo "Native x64 payload verified: lib/x86_64/libpocket_ai.so + lib/x86_64/libllama.so"
 
       - name: Sign full native x64 runtime-test APK
         run: |
