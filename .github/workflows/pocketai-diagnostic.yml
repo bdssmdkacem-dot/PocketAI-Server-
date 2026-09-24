@@ -158,9 +158,17 @@ jobs:
           find build/app/intermediates -path '*merged_native_libs*' -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
           find android/app/build -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk
-          echo "=== Verify native x64 APK payload ==="
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep '^lib/' | sort || true
-          echo "=== Verify libpocket_ai.so ==="
+          echo "=== Locate Gradle APK outputs ==="
+          find android/app/build/outputs/apk -type f -name '*.apk' -print 2>/dev/null | sort || true
+          find build/app/outputs/flutter-apk -type f -name '*.apk' -print 2>/dev/null | sort || true
+          echo "=== Inspect Gradle APK payload ==="
+          GRADLE_APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -f "$GRADLE_APK"
+          unzip -Z1 "$GRADLE_APK" | grep '^lib/' | sort || true
+          echo "=== Verify native x64 in Gradle APK ==="
+          unzip -Z1 "$GRADLE_APK" | grep -qx "lib/x86_64/libpocket_ai.so"
+          cp "$GRADLE_APK" build/app/outputs/flutter-apk/pocketai-native-x64.apk
+          echo "=== Verify Flutter output points to native APK ==="
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -qx "lib/x86_64/libpocket_ai.so"
 
       - name: Sign full native x64 runtime-test APK
