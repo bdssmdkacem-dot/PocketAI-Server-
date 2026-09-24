@@ -143,44 +143,29 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
           cmake --build /tmp/pocketai-cmake-x64 --target pocket_ai --parallel 2
           echo "=== Standalone native outputs ==="
-          find /tmp/pocketai-cmake-x64 -type f -name 'libpocket_ai.so' -print
-          NATIVE_SO="$(find /tmp/pocketai-cmake-x64 -type f -name 'libpocket_ai.so' | head -1)"
-          test -n "$NATIVE_SO"
-          cp "$NATIVE_SO" android/app/src/main/jniLibs/x86_64/libpocket_ai.so
-          file android/app/src/main/jniLibs/x86_64/libpocket_ai.so
+          find /tmp/pocketai-cmake-x64 -type f -name '*.so' -print | sort
+          NATIVE_LIB_DIR="/tmp/pocketai-cmake-x64/bin"
+          test -d "$NATIVE_LIB_DIR"
+          for LIB in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+            test -f "$NATIVE_LIB_DIR/$LIB"
+            cp "$NATIVE_LIB_DIR/$LIB" "android/app/src/main/jniLibs/x86_64/$LIB"
+          done
+          find android/app/src/main/jniLibs/x86_64 -type f -name '*.so' -print | sort
+          file android/app/src/main/jniLibs/x86_64/*.so
           readelf -h android/app/src/main/jniLibs/x86_64/libpocket_ai.so | grep -E 'Class:|Machine:'
           echo "=== Verify JNI source registration ==="
           grep -n -A8 -B3 'jniLibs' android/app/build.gradle.kts || true
           test -f android/app/src/main/jniLibs/x86_64/libpocket_ai.so
           echo "=== Build native x64 Flutter APK with jniLibs packaging ==="
           flutter build apk --release --target-platform android-x64
-          echo "=== Inspect merged native libraries before verification ==="
-          find build/app/intermediates -path '*merged_native_libs*' -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
-          find android/app/build -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
-          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk
-          echo "=== Inspect Flutter APK before native injection ==="
+          echo "=== Verify packaged native x64 libraries ==="
           FLUTTER_APK="build/app/outputs/flutter-apk/app-release.apk"
           test -f "$FLUTTER_APK"
-          unzip -Z1 "$FLUTTER_APK" | grep '^lib/' | sort || true
-          echo "=== Package merged native library into final APK ==="
-          MERGED_SO="build/app/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib/x86_64/libpocket_ai.so"
-          test -f "$MERGED_SO"
-          mkdir -p /tmp/pocketai-apk-native/lib/x86_64
-          # Package the complete llama.cpp dependency closure, not only pocket_ai.
-          MERGED_LIB_DIR="build/app/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib/x86_64"
-          test -d "$MERGED_LIB_DIR"
-          find "$MERGED_LIB_DIR" -maxdepth 1 -type f -name '*.so' -print | sort
-          cp "$MERGED_LIB_DIR"/*.so /tmp/pocketai-apk-native/lib/x86_64/
-          cp "$FLUTTER_APK" /tmp/pocketai-native-x64-unsigned.apk
-          (cd /tmp/pocketai-apk-native && zip -q -r /tmp/pocketai-native-x64-unsigned.apk lib)
-          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/zipalign" -f -P 4 4 /tmp/pocketai-native-x64-unsigned.apk /tmp/pocketai-native-x64-aligned.apk
-          "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey /tmp/pocketai-native-x64-aligned.apk
-          mkdir -p build/app/outputs/flutter-apk
-          cp /tmp/pocketai-native-x64-aligned.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk
-          echo "=== Verify final native x64 APK payload ==="
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep '^lib/' | sort || true
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -qx "lib/x86_64/libpocket_ai.so"
+          cp "$FLUTTER_APK" build/app/outputs/flutter-apk/pocketai-native-x64.apk
+          unzip -Z1 "$FLUTTER_APK" | grep '^lib/' | sort
+          for LIB in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+            unzip -Z1 "$FLUTTER_APK" | grep -qx "lib/x86_64/$LIB"
+          done
 
       - name: Sign full native x64 runtime-test APK
         run: |
@@ -209,28 +194,25 @@ jobs:
             -DANDROID_PLATFORM=android-23 \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build /tmp/pocketai-cmake-arm64 --target pocket_ai --parallel 2
-          NATIVE_SO="$(find /tmp/pocketai-cmake-arm64 -type f -name 'libpocket_ai.so' | head -1)"
-          test -n "$NATIVE_SO"
-          cp "$NATIVE_SO" android/app/src/main/jniLibs/arm64-v8a/libpocket_ai.so
-          file android/app/src/main/jniLibs/arm64-v8a/libpocket_ai.so
+          NATIVE_LIB_DIR="/tmp/pocketai-cmake-arm64/bin"
+          test -d "$NATIVE_LIB_DIR"
+          for LIB in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+            test -f "$NATIVE_LIB_DIR/$LIB"
+            cp "$NATIVE_LIB_DIR/$LIB" "android/app/src/main/jniLibs/arm64-v8a/$LIB"
+          done
+          find android/app/src/main/jniLibs/arm64-v8a -type f -name '*.so' -print | sort
+          file android/app/src/main/jniLibs/arm64-v8a/*.so
           readelf -h android/app/src/main/jniLibs/arm64-v8a/libpocket_ai.so | grep -E 'Class:|Machine:'
           flutter build apk --release --target-platform android-arm64
           FLUTTER_APK="build/app/outputs/flutter-apk/app-release.apk"
           test -f "$FLUTTER_APK"
-          MERGED_SO="build/app/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib/arm64-v8a/libpocket_ai.so"
-          test -f "$MERGED_SO"
-          mkdir -p /tmp/pocketai-apk-native-arm64/lib/arm64-v8a
-          cp "$MERGED_SO" /tmp/pocketai-apk-native-arm64/lib/arm64-v8a/libpocket_ai.so
-          cp "$FLUTTER_APK" /tmp/pocketai-native-arm64-unsigned.apk
-          (cd /tmp/pocketai-apk-native-arm64 && zip -q -r /tmp/pocketai-native-arm64-unsigned.apk lib)
-          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/zipalign" -f -P 4 4 /tmp/pocketai-native-arm64-unsigned.apk /tmp/pocketai-native-arm64-aligned.apk
-          "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey /tmp/pocketai-native-arm64-aligned.apk
           mkdir -p build/app/outputs/flutter-apk
-          cp /tmp/pocketai-native-arm64-aligned.apk build/app/outputs/flutter-apk/pocketai-native-arm64.apk
+          cp "$FLUTTER_APK" build/app/outputs/flutter-apk/pocketai-native-arm64.apk
           echo "=== Verify final native ARM64 APK payload ==="
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-arm64.apk | grep '^lib/' | sort || true
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-arm64.apk | grep -qx "lib/arm64-v8a/libpocket_ai.so"
+          unzip -Z1 "$FLUTTER_APK" | grep '^lib/' | sort
+          for LIB in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+            unzip -Z1 "$FLUTTER_APK" | grep -qx "lib/arm64-v8a/$LIB"
+          done
 
       - name: Static APK diagnostics
         run: |
