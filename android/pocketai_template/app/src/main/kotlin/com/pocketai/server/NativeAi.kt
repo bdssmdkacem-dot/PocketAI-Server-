@@ -4,6 +4,7 @@ class NativeAi {
     external fun isReady(): Boolean
     external fun status(): String
     external fun version(): String
+    external fun runtimeCheck(): String
 
     companion object {
         init {
