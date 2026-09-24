@@ -126,46 +126,30 @@ jobs:
           flutter clean
           rm -rf android/.cxx android/app/.cxx build
           flutter pub get
-          echo "=== Gradle native x64 configuration ==="
+          echo "=== Generated Android native configuration (diagnostic only) ==="
           cd android
-          ./gradlew :app:tasks --all | grep -E 'externalNativeBuild.*Release|buildCMake.*Release' | sort || true
-          cd ..
-          echo "=== Explicit native x64 build ==="
-          cd android
-          echo "=== Generated build.gradle.kts native configuration ==="
-          sed -n '/defaultConfig {/,/^[[:space:]]*}/p' app/build.gradle.kts | head -80
-          echo "=== Generated CMake configuration ==="
-          sed -n '1,220p' app/src/main/cpp/CMakeLists.txt
-          echo "=== Gradle native/CMake tasks ==="
-          ./gradlew :app:tasks --all | grep -Ei 'externalNativeBuild|buildCMake|generateJsonModel|configureCMake' | sort || true
-          echo "=== Verify module-level CMake configuration ==="
           grep -n -A8 -B3 'externalNativeBuild' app/build.gradle.kts || true
-          grep -n 'path = file("src/main/cpp/CMakeLists.txt")' app/build.gradle.kts
-          grep -n -A6 -B2 'abiFilters' app/build.gradle.kts
-          echo "=== Explicit native x64 build ==="
-          set +e
-          rm -f native-gradle.log
-          ./gradlew :app:assembleRelease --no-daemon --console=plain --rerun-tasks --info --stacktrace > native-gradle.log 2>&1
-          RC=$?
-          echo "Gradle native build exit code: $RC"
-          echo "=== Gradle failure markers ==="
-          grep -nE 'FAILURE:|What went wrong:|Caused by:|Exception:|Exception in|CMake Error|ninja: error|error:' native-gradle.log | tail -120 || true
-          echo "=== Gradle log tail ==="
-          tail -220 native-gradle.log || true
-          echo "=== Native build outputs ==="
-          find app/.cxx .cxx -type f \( -name 'libpocket_ai.so' -o -name '*.so' \) -print 2>/dev/null | sort || true
-          echo "=== CMake build directories ==="
-          find app/.cxx .cxx -maxdepth 12 -type f -name build.ninja -print 2>/dev/null | sort || true
-          echo "=== Gradle failure report ==="
-          find build -type f -path '*problems-report.html' -print 2>/dev/null | sort || true
-          cp native-gradle.log ../diagnostic/native-gradle.log || true
-          if [ "$RC" -ne 0 ]; then
-            exit "$RC"
-          fi
+          grep -n 'path = file("src/main/cpp/CMakeLists.txt")' app/build.gradle.kts || true
+          grep -n -A6 -B2 'abiFilters' app/build.gradle.kts || true
           cd ..
-          echo "=== Native outputs after CMake ==="
-          find android/app/.cxx android/.cxx -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
-          find android/app/.cxx android/.cxx -type f -name '*.so' -print 2>/dev/null | sort | head -50 || true
+          echo "=== Standalone CMake/NDK native x64 build ==="
+          rm -rf android/app/src/main/jniLibs
+          mkdir -p android/app/src/main/jniLibs/x86_64
+          rm -rf /tmp/pocketai-cmake-x64
+          cmake -S android/app/src/main/cpp -B /tmp/pocketai-cmake-x64 \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=x86_64 \
+            -DANDROID_PLATFORM=android-23 \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/pocketai-cmake-x64 --target pocket_ai --parallel 2
+          echo "=== Standalone native outputs ==="
+          find /tmp/pocketai-cmake-x64 -type f -name 'libpocket_ai.so' -print
+          NATIVE_SO="$(find /tmp/pocketai-cmake-x64 -type f -name 'libpocket_ai.so' | head -1)"
+          test -n "$NATIVE_SO"
+          cp "$NATIVE_SO" android/app/src/main/jniLibs/x86_64/libpocket_ai.so
+          file android/app/src/main/jniLibs/x86_64/libpocket_ai.so
+          readelf -h android/app/src/main/jniLibs/x86_64/libpocket_ai.so | grep -E 'Class:|Machine:'
+          echo "=== Build native x64 Flutter APK with jniLibs packaging ==="
           flutter build apk --release --target-platform android-x64
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk
           echo "=== Verify native x64 APK payload ==="
