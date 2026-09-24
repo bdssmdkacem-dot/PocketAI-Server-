@@ -166,7 +166,11 @@ jobs:
           MERGED_SO="build/app/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib/x86_64/libpocket_ai.so"
           test -f "$MERGED_SO"
           mkdir -p /tmp/pocketai-apk-native/lib/x86_64
-          cp "$MERGED_SO" /tmp/pocketai-apk-native/lib/x86_64/libpocket_ai.so
+          # Package the complete llama.cpp dependency closure, not only pocket_ai.
+          MERGED_LIB_DIR="build/app/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib/x86_64"
+          test -d "$MERGED_LIB_DIR"
+          find "$MERGED_LIB_DIR" -maxdepth 1 -type f -name '*.so' -print | sort
+          cp "$MERGED_LIB_DIR"/*.so /tmp/pocketai-apk-native/lib/x86_64/
           cp "$FLUTTER_APK" /tmp/pocketai-native-x64-unsigned.apk
           (cd /tmp/pocketai-apk-native && zip -q -r /tmp/pocketai-native-x64-unsigned.apk lib)
           BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
