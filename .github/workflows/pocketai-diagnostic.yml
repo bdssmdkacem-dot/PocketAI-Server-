@@ -137,7 +137,11 @@ jobs:
           echo "=== Generated CMake configuration ==="
           sed -n '1,220p' app/src/main/cpp/CMakeLists.txt
           echo "=== Gradle native/CMake tasks ==="
-          ./gradlew :app:tasks --all | grep -E 'externalNativeBuild|buildCMake' | sort || true
+          ./gradlew :app:tasks --all | grep -Ei 'externalNativeBuild|buildCMake|generateJsonModel|configureCMake' | sort || true
+          echo "=== Verify module-level CMake configuration ==="
+          grep -n -A8 -B3 'externalNativeBuild' app/build.gradle.kts || true
+          grep -n 'path = file("src/main/cpp/CMakeLists.txt")' app/build.gradle.kts
+          grep -n -A6 -B2 'abiFilters' app/build.gradle.kts
           echo "=== Explicit native x64 build ==="
           set +e
           rm -f native-gradle.log
