@@ -126,11 +126,19 @@ jobs:
           flutter clean
           rm -rf android/.cxx android/app/.cxx build
           flutter pub get
+          echo "=== Gradle native x64 configuration ==="
+          ./gradlew :app:tasks --all | grep -E 'externalNativeBuild.*Release|buildCMake.*Release' | sort || true
+          echo "=== Explicit native x64 build ==="
+          ./gradlew :app:externalNativeBuildRelease --info
+          echo "=== Native outputs after CMake ==="
+          find android/app/.cxx android/.cxx -type f -name 'libpocket_ai.so' -print 2>/dev/null | sort || true
+          find android/app/.cxx android/.cxx -type f -name '*.so' -print 2>/dev/null | sort | head -50 || true
           flutter build apk --release --target-platform android-x64
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk
           echo "=== Verify native x64 APK payload ==="
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep '^lib/' | sort
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -q "^lib/x86_64/libpocket_ai\\.so$"
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep '^lib/' | sort || true
+          echo "=== Verify libpocket_ai.so ==="
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -qx "lib/x86_64/libpocket_ai.so"
 
       - name: Sign full native x64 runtime-test APK
         run: |
