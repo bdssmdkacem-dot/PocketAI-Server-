@@ -113,6 +113,11 @@ jobs:
           cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
           python3 scripts/configure_android_native.py
 
+      - name: Configure native x64 runtime build
+        env:
+          POCKETAI_ABI: x86_64
+        run: python3 scripts/configure_android_native.py
+
       - name: Build full native x64 runtime-test APK
         run: |
           flutter build apk --release --target-platform android-x64
@@ -123,6 +128,11 @@ jobs:
           APK="build/app/outputs/flutter-apk/pocketai-native-x64.apk"
           BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
           "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+
+      - name: Configure native ARM64 release build
+        env:
+          POCKETAI_ABI: arm64-v8a
+        run: python3 scripts/configure_android_native.py
 
       - name: Build full native ARM64 APK
         run: flutter build apk --release --target-platform android-arm64
@@ -149,7 +159,7 @@ jobs:
             ls -lh build/app/outputs/flutter-apk/*.apk
             echo "=== SHA256 ==="
             sha256sum build/app/outputs/flutter-apk/*.apk
-            for APK in build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk build/app/outputs/flutter-apk/app-release.apk; do
+            for APK in build/app/outputs/flutter-apk/pocketai-flutter-smoke-x64.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk build/app/outputs/flutter-apk/app-release.apk; do
               echo
               echo "===== $APK ====="
               echo "--- AAPT2 BADGING ---"
