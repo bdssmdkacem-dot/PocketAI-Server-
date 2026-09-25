@@ -65,16 +65,28 @@ if not apk.is_file():
     print("Native x64 runtime APK not found", file=sys.stderr)
     sys.exit(0)
 
-rc, output = run_capture(
-    ["adb", "install", "--no-streaming", "-r", "-t", str(apk)],
-    timeout=300,
+# Push first, then ask Android's package manager to install the local file.
+# This avoids adb's streamed-install path, which can be extremely slow on the
+# heavily loaded x86_64 GitHub Actions emulator for large native APKs.
+remote_apk = "/data/local/tmp/pocketai-native-x64.apk"
+push_rc, push_output = run_capture(
+    ["adb", "push", str(apk), remote_apk],
+    timeout=900,
 )
+if push_rc == 0:
+    rc, output = run_capture(
+        ["adb", "shell", "pm", "install", "-r", "-t", remote_apk],
+        timeout=900,
+    )
+    output = "=== ADB PUSH ===\n" + push_output + "\n=== PM INSTALL ===\n" + output
+else:
+    rc, output = push_rc, "=== ADB PUSH ===\n" + push_output
 
 # Android's package manager can finish an install after the adb client times out.
 # Therefore pm path is authoritative for whether the package is actually present.
 pm_rc, pm_output = run_capture(
     ["adb", "shell", "pm", "path", PACKAGE],
-    timeout=30,
+    timeout=60,
 )
 installed = pm_rc == 0 and any(
     line.strip().startswith("package:") for line in pm_output.splitlines()
@@ -83,7 +95,7 @@ effective_install = rc == 0 or installed
 
 with install_report.open("a", encoding="utf-8") as f:
     f.write("===== INSTALL COMMAND =====\n")
-    f.write("adb install --no-streaming -r -t " + str(apk) + "\n")
+    f.write("adb push " + str(apk) + " /data/local/tmp/pocketai-native-x64.apk\n")\n    f.write("adb shell pm install -r -t /data/local/tmp/pocketai-native-x64.apk\n")
     f.write("===== INSTALL OUTPUT =====\n")
     f.write(output)
     f.write(f"INSTALL_COMMAND_RC={rc}\n")
@@ -364,7 +376,7 @@ with install_report.open("a", encoding="utf-8") as f:
 print("===== X64 APK INSTALL RESULT =====")
 print(output.strip())
 print("--- INSTALL COMMAND (REPRODUCIBLE) ---")
-print("adb install -r -t " + str(apk))
+print("adb push " + str(apk) + " /data/local/tmp/pocketai-native-x64.apk")\nprint("adb shell pm install -r -t /data/local/tmp/pocketai-native-x64.apk")
 print(f"INSTALL_COMMAND_RC={rc}")
 print("--- PACKAGE MANAGER PATH ---")
 print(pm_output.strip())
