@@ -82,6 +82,9 @@ installed = pm_rc == 0 and any(
 effective_install = rc == 0 or installed
 
 with install_report.open("a", encoding="utf-8") as f:
+    f.write("===== INSTALL COMMAND =====\n")
+    f.write("adb install -r -t " + str(apk) + "\n")
+    f.write("===== INSTALL OUTPUT =====\n")
     f.write(output)
     f.write(f"INSTALL_COMMAND_RC={rc}\n")
     f.write(f"INSTALL_COMMAND_TIMEOUT={rc == 124}\n")
@@ -360,6 +363,8 @@ with install_report.open("a", encoding="utf-8") as f:
 
 print("===== X64 APK INSTALL RESULT =====")
 print(output.strip())
+print("--- INSTALL COMMAND (REPRODUCIBLE) ---")
+print("adb install -r -t " + str(apk))
 print(f"INSTALL_COMMAND_RC={rc}")
 print("--- PACKAGE MANAGER PATH ---")
 print(pm_output.strip())
