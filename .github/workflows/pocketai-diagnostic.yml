@@ -203,7 +203,7 @@ jobs:
           cp android/app/src/main/jniLibs/x86_64/*.so "$INJECT_DIR/lib/x86_64/"
           cp "$FLUTTER_APK" "$INJECT_DIR/pocketai-native-x64-unsigned.apk"
           cd "$INJECT_DIR"
-          zip -q -u pocketai-native-x64-unsigned.apk lib/x86_64/*.so
+          zip -0 -q -u pocketai-native-x64-unsigned.apk lib/x86_64/*.so
           BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
           "$BT/zipalign" -f -P 4 4 pocketai-native-x64-unsigned.apk pocketai-native-x64.apk
           "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey pocketai-native-x64.apk
@@ -259,7 +259,7 @@ jobs:
           cp android/app/src/main/jniLibs/arm64-v8a/*.so "$INJECT_DIR/lib/arm64-v8a/"
           cp "$FLUTTER_APK" "$INJECT_DIR/pocketai-native-arm64-unsigned.apk"
           cd "$INJECT_DIR"
-          zip -q -u pocketai-native-arm64-unsigned.apk lib/arm64-v8a/*.so
+          zip -0 -q -u pocketai-native-arm64-unsigned.apk lib/arm64-v8a/*.so
           BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
           "$BT/zipalign" -f -P 4 4 pocketai-native-arm64-unsigned.apk pocketai-native-arm64.apk
           "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey pocketai-native-arm64.apk
