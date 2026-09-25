@@ -278,25 +278,43 @@ jobs:
 
       - name: Deep APK package validation
         run: |
-          set -euo pipefail
+          set -u
           X64="build/app/outputs/flutter-apk/pocketai-native-x64.apk"
           ARM64="build/app/outputs/flutter-apk/pocketai-native-arm64.apk"
           BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
           mkdir -p diagnostic/apk-validation
+          FAILED=0
           for apk in "$X64" "$ARM64"; do
-            test -s "$apk"
-            echo "=== $apk ==="
+            echo
+            echo "===== VALIDATING $apk ====="
+            if [ ! -s "$apk" ]; then echo "MISSING_OR_EMPTY_APK"; FAILED=1; continue; fi
             file "$apk"
-            unzip -t "$apk"
-            "$BT/zipalign" -c -P 4 -v 4 "$apk"
-            "$BT/apksigner" verify --verbose --print-certs "$apk"
-            "$BT/aapt2" dump badging "$apk" | grep -E "package:|native-code:"
+            echo "--- ZIP TEST ---"
+            unzip -t "$apk" || FAILED=1
+            echo "--- ZIPALIGN ---"
+            "$BT/zipalign" -c -P 4 -v 4 "$apk" || FAILED=1
+            echo "--- APK SIGNATURE ---"
+            "$BT/apksigner" verify --verbose --print-certs "$apk" || FAILED=1
+            echo "--- BADGING ---"
+            "$BT/aapt2" dump badging "$apk" || FAILED=1
+            if [[ "$apk" == *arm64* ]]; then abi="arm64-v8a"; else abi="x86_64"; fi
+            echo "--- REQUIRED NATIVE LIBRARIES ($abi) ---"
             for lib in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
-              if [[ "$apk" == *arm64* ]]; then abi="arm64-v8a"; else abi="x86_64"; fi
-              unzip -Z1 "$apk" | grep -qx "lib/$abi/$lib"
+              if unzip -Z1 "$apk" | grep -Fxq "lib/$abi/$lib"; then
+                echo "OK lib/$abi/$lib"
+              else
+                echo "MISSING lib/$abi/$lib"
+                FAILED=1
+              fi
             done
           done
-          sha256sum "$X64" "$ARM64" | tee diagnostic/apk-validation/sha256.txt
+          echo
+          echo "--- SHA256 ---"
+          sha256sum "$X64" "$ARM64" | tee diagnostic/apk-validation/sha256.txt || FAILED=1
+          if [ "$FAILED" -ne 0 ]; then
+            echo "DEEP_APK_VALIDATION=FAILED" | tee diagnostic/apk-validation/result.txt
+            exit 1
+          fi
           echo "DEEP_APK_VALIDATION=PASSED" | tee diagnostic/apk-validation/result.txt
 
       - name: Static APK diagnostics
