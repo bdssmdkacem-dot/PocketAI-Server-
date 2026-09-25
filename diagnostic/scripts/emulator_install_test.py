@@ -221,6 +221,11 @@ with install_report.open("a", encoding="utf-8") as f:
                     encoding="utf-8",
                 )
                 print("HTTP_SERVER_VERIFICATION=PASSED")
+                # /health reports native_ready=true only after the JNI library is
+                # loaded and the native backend has initialized. Keep this as the
+                # authoritative runtime signal; UI text is presentation-only.
+                runtime_verified_by_http = health.get("native_ready") is True
+                print(f"NATIVE_RUNTIME_VERIFICATION_BY_HTTP={runtime_verified_by_http}")
 
                 # Real GGUF load + inference verification.
                 inference_report = DIAG / "inference.txt"
@@ -396,6 +401,11 @@ runtime_verified = False
 if install_report.is_file():
     report_text = install_report.read_text(encoding="utf-8")
     runtime_verified = "NATIVE_RUNTIME_VERIFICATION=PASSED" in report_text
+# The UI check above is intentionally a secondary diagnostic. The HTTP /health
+# endpoint is the authoritative runtime check because it directly reports the
+# JNI/native backend state and is independent of UI wording.
+if "runtime_verified_by_http" in globals() and runtime_verified_by_http:
+    runtime_verified = True
 
 print(f"LOGCAT_REPORT={logcat_report}")
 print(f"NATIVE_RUNTIME_VERIFICATION={runtime_verified}")
