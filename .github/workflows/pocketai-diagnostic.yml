@@ -48,7 +48,7 @@ jobs:
           from pathlib import Path
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
-          s = s.replace("<manifest", '<manifest xmlns:tools="http://schemas.android.com/tools"', 1)\n          s = s.replace("<application", '<application android:debuggable="true" tools:ignore="HardcodedDebugMode"', 1)
+          s = s.replace("<manifest", '<manifest xmlns:tools="http://schemas.android.com/tools"', 1)
           p.write_text(s)
           PY
 
