@@ -38,7 +38,7 @@ jobs:
           s = p.read_text()
           permission = '<uses-permission android:name="android.permission.INTERNET" />'
           if permission not in s:
-              s = s.replace('<application', permission + '\\n    <application', 1)
+              s = s.replace('<application', permission + '\n    <application', 1)
           p.write_text(s)
           PY
 
@@ -48,7 +48,7 @@ jobs:
           from pathlib import Path
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
-          s = s.replace("<application", '<application android:debuggable="true"', 1)
+          s = s.replace("<manifest", '<manifest xmlns:tools="http://schemas.android.com/tools"', 1)\n          s = s.replace("<application", '<application android:debuggable="true" tools:ignore="HardcodedDebugMode"', 1)
           p.write_text(s)
           PY
 
