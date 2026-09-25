@@ -35,6 +35,8 @@ class _DashboardPageState extends State<DashboardPage> {
   String _version = '—';
   String _runtime = '—';
   String _device = '—';
+  bool _serverRunning = false;
+  String _serverAddress = '127.0.0.1:8080';
 
   @override
   void initState() {
@@ -55,6 +57,8 @@ class _DashboardPageState extends State<DashboardPage> {
         _version = result?['version']?.toString() ?? 'Unknown';
         _runtime = result?['runtime']?.toString() ?? 'Unknown';
         _device = '${device?['manufacturer'] ?? ''} ${device?['model'] ?? ''} • Android API ${device?['androidApi'] ?? '?'} • ABI $abis • RAM $ramGb';
+        _serverRunning = result?['serverRunning'] == true;
+        _serverAddress = '${result?['serverHost'] ?? '127.0.0.1'}:${result?['serverPort'] ?? 8080}';
       });
     } on PlatformException catch (error) {
       if (!mounted) return;
@@ -102,8 +106,8 @@ class _DashboardPageState extends State<DashboardPage> {
           InfoTile(title: 'llama.cpp', value: _status),
           InfoTile(title: 'Version', value: _version),
           const InfoTile(title: 'Model', value: 'No model loaded'),
-          const InfoTile(title: 'Server', value: 'Stopped'),
-          const InfoTile(title: 'API', value: 'http://0.0.0.0:8080/v1'),
+          InfoTile(title: 'Server', value: _serverRunning ? 'Running • $_serverAddress' : 'Stopped'),
+          InfoTile(title: 'API', value: 'http://$_serverAddress/v1'),
           const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
           const SizedBox(height: 8),
           FilledButton.icon(onPressed: _checkNativeEngine, icon: const Icon(Icons.refresh), label: const Text('Refresh device & native status')),
