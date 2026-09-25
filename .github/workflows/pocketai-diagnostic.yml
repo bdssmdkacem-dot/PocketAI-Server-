@@ -42,7 +42,29 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Enable test-only Android debugging\n        run: |\n          python3 - <<'PY'\n          from pathlib import Path\n          p = Path("android/app/src/main/AndroidManifest.xml")\n          s = p.read_text()\n          s = s.replace("<application", '<application android:debuggable="true"', 1)\n          p.write_text(s)\n          PY\n\n      - name: Download tiny GGUF inference test model\n        run: |\n          set -e\n          mkdir -p diagnostic/model\n          curl -L --fail --retry 3 --retry-delay 2 \\\n            -o diagnostic/model/stories15M-q4_0.gguf \\\n            https://huggingface.co/ggml-org/tiny-llamas/resolve/main/stories15M-q4_0.gguf\n          test -s diagnostic/model/stories15M-q4_0.gguf\n          echo "=== Test model ==="\n          ls -lh diagnostic/model/stories15M-q4_0.gguf\n          sha256sum diagnostic/model/stories15M-q4_0.gguf\n\n      - name: Prepare Android NDK
+      - name: Enable test-only Android debugging
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          s = s.replace("<application", '<application android:debuggable="true"', 1)
+          p.write_text(s)
+          PY
+
+      - name: Download tiny GGUF inference test model
+        run: |
+          set -e
+          mkdir -p diagnostic/model
+          curl -L --fail --retry 3 --retry-delay 2 \
+            -o diagnostic/model/stories15M-q4_0.gguf \
+            https://huggingface.co/ggml-org/tiny-llamas/resolve/main/stories15M-q4_0.gguf
+          test -s diagnostic/model/stories15M-q4_0.gguf
+          echo "=== Test model ==="
+          ls -lh diagnostic/model/stories15M-q4_0.gguf
+          sha256sum diagnostic/model/stories15M-q4_0.gguf
+
+      - name: Prepare Android NDK
         run: |
           SDK_ROOT="$ANDROID_SDK_ROOT"
           if [ -z "$SDK_ROOT" ]; then SDK_ROOT="$ANDROID_HOME"; fi
