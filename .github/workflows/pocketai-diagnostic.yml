@@ -209,17 +209,13 @@ jobs:
           "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey pocketai-native-x64.apk
           cd "$GITHUB_WORKSPACE"
           cp "$INJECT_DIR/pocketai-native-x64.apk" build/app/outputs/flutter-apk/pocketai-native-x64.apk
+          mkdir -p /tmp/pocketai-final-apks
+          cp build/app/outputs/flutter-apk/pocketai-native-x64.apk /tmp/pocketai-final-apks/pocketai-native-x64.apk
           echo "=== Verify injected native x64 libraries ==="
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep '^lib/' | sort
           for LIB in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
             unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -qx "lib/x86_64/$LIB"
           done
-
-      - name: Sign full native x64 runtime-test APK
-        run: |
-          APK="build/app/outputs/flutter-apk/pocketai-native-x64.apk"
-          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
-          "$BT/apksigner" sign --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
 
       - name: Configure native ARM64 release build
         env:
@@ -270,6 +266,8 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           mkdir -p build/app/outputs/flutter-apk
           cp "$INJECT_DIR/pocketai-native-arm64.apk" build/app/outputs/flutter-apk/pocketai-native-arm64.apk
+          mkdir -p build/app/outputs/flutter-apk
+          cp /tmp/pocketai-final-apks/pocketai-native-x64.apk build/app/outputs/flutter-apk/pocketai-native-x64.apk
           echo "=== Verify injected native ARM64 libraries ==="
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-arm64.apk | grep '^lib/' | sort
           for LIB in libpocket_ai.so libllama.so libggml-base.so libggml-cpu.so; do
