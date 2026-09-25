@@ -2,6 +2,7 @@
 """Run the x86_64 emulator install/launch diagnostic without multiline shell parsing."""
 
 from pathlib import Path
+import json
 import subprocess
 import sys
 import time
@@ -143,6 +144,82 @@ with install_report.open("a", encoding="utf-8") as f:
                 lf.write(check_output)
                 lf.write(f"COMMAND_RC={check_rc}\n")
 
+        # Verify the localhost OpenAI-compatible HTTP API through adb port forwarding.
+        http_report = DIAG / "http-api.txt"
+        forward_rc, forward_output = run_capture(["adb", "forward", "tcp:18080", "tcp:8080"], timeout=30)
+        http_verified = False
+        if forward_rc == 0:
+            try:
+                from urllib.error import HTTPError
+                from urllib.request import Request, urlopen
+
+                base = "http://127.0.0.1:18080"
+
+                def http_get(path):
+                    with urlopen(base + path, timeout=3) as response:
+                        return response.status, json.loads(response.read().decode())
+
+                health = None
+                for _ in range(30):
+                    try:
+                        status, health = http_get("/health")
+                        if status == 200 and health.get("status") == "ok":
+                            break
+                    except Exception:
+                        time.sleep(1)
+                else:
+                    raise RuntimeError("HTTP /health did not become ready")
+
+                assert health.get("native_ready") is True, health
+                assert health.get("model_loaded") is False, health
+                model_status, models = http_get("/v1/models")
+                assert model_status == 200, model_status
+                assert models.get("object") == "list", models
+                assert models.get("data") == [], models
+
+                payload = json.dumps({
+                    "model": "none",
+                    "messages": [{"role": "user", "content": "hello"}],
+                }).encode()
+                request = Request(
+                    base + "/v1/chat/completions",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                try:
+                    urlopen(request, timeout=3)
+                    raise AssertionError("Expected HTTP 409 when no model is loaded")
+                except HTTPError as error:
+                    assert error.code == 409, error.code
+                    error_body = json.loads(error.read().decode())
+                    assert "error" in error_body, error_body
+
+                http_verified = True
+                http_report.write_text(
+                    "HTTP_SERVER_VERIFICATION=PASSED\\n"
+                    f"HEALTH={health}\\n"
+                    f"MODELS={models}\\n"
+                    f"CHAT_NO_MODEL={error_body}\\n",
+                    encoding="utf-8",
+                )
+                print("HTTP_SERVER_VERIFICATION=PASSED")
+            except Exception as exc:
+                http_report.write_text(
+                    "HTTP_SERVER_VERIFICATION=FAILED\\n"
+                    f"ERROR={exc!r}\\n",
+                    encoding="utf-8",
+                )
+                print(f"HTTP_SERVER_VERIFICATION=FAILED: {exc}", file=sys.stderr)
+        else:
+            http_report.write_text(
+                "HTTP_SERVER_VERIFICATION=FAILED\\n"
+                f"ADB_FORWARD_RC={forward_rc}\\n"
+                f"{forward_output}",
+                encoding="utf-8",
+            )
+        run_capture(["adb", "forward", "--remove", "tcp:18080"], timeout=30)
+
         log_rc, log_output = run_capture(
             ["adb", "logcat", "-d", "-v", "time", "-t", "1000"],
             timeout=60,
@@ -205,4 +282,4 @@ if install_report.is_file():
 
 print(f"LOGCAT_REPORT={logcat_report}")
 print(f"NATIVE_RUNTIME_VERIFICATION={runtime_verified}")
-sys.exit(0 if (effective_install and runtime_verified) else 1)
+sys.exit(0 if (effective_install and runtime_verified and http_verified) else 1)
