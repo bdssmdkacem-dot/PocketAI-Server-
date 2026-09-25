@@ -95,7 +95,8 @@ effective_install = rc == 0 or installed
 
 with install_report.open("a", encoding="utf-8") as f:
     f.write("===== INSTALL COMMAND =====\n")
-    f.write("adb push " + str(apk) + " /data/local/tmp/pocketai-native-x64.apk\n")\n    f.write("adb shell pm install -r -t /data/local/tmp/pocketai-native-x64.apk\n")
+    f.write("adb push " + str(apk) + " /data/local/tmp/pocketai-native-x64.apk\\n")
+    f.write("adb shell pm install -r -t /data/local/tmp/pocketai-native-x64.apk\\n")
     f.write("===== INSTALL OUTPUT =====\n")
     f.write(output)
     f.write(f"INSTALL_COMMAND_RC={rc}\n")
