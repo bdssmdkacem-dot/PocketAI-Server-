@@ -358,6 +358,17 @@ with install_report.open("a", encoding="utf-8") as f:
     encoding="utf-8",
 )
 
+print("===== X64 APK INSTALL RESULT =====")
+print(output.strip())
+print(f"INSTALL_COMMAND_RC={rc}")
+print("--- PACKAGE MANAGER PATH ---")
+print(pm_output.strip())
+print("--- INSTALL REPORT TAIL ---")
+try:
+    report_tail = install_report.read_text(encoding="utf-8").splitlines()[-80:]
+    print("\n".join(report_tail))
+except Exception as exc:
+    print(f"REPORT_READ_ERROR={exc!r}")
 print(f"FLUTTER_X64_INSTALL_RC={rc}")
 print(f"INSTALL_VERIFIED={effective_install}")
 print(f"INSTALL_REPORT={install_report}")
