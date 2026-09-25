@@ -66,8 +66,8 @@ if not apk.is_file():
     sys.exit(0)
 
 rc, output = run_capture(
-    ["adb", "install", "-r", "-t", str(apk)],
-    timeout=180,
+    ["adb", "install", "--no-streaming", "-r", "-t", str(apk)],
+    timeout=300,
 )
 
 # Android's package manager can finish an install after the adb client times out.
@@ -83,7 +83,7 @@ effective_install = rc == 0 or installed
 
 with install_report.open("a", encoding="utf-8") as f:
     f.write("===== INSTALL COMMAND =====\n")
-    f.write("adb install -r -t " + str(apk) + "\n")
+    f.write("adb install --no-streaming -r -t " + str(apk) + "\n")
     f.write("===== INSTALL OUTPUT =====\n")
     f.write(output)
     f.write(f"INSTALL_COMMAND_RC={rc}\n")
