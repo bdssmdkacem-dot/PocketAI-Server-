@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import time
+import os
 
 ROOT = Path.cwd()
 DIAG = ROOT / "diagnostic" / "emulator"
@@ -204,6 +205,92 @@ with install_report.open("a", encoding="utf-8") as f:
                     encoding="utf-8",
                 )
                 print("HTTP_SERVER_VERIFICATION=PASSED")
+
+                # Real GGUF load + inference verification.
+                inference_report = DIAG / "inference.txt"
+                model_host_path = os.environ.get("TEST_MODEL_PATH", "").strip()
+                inference_verified = False
+                inference_lines = []
+                if model_host_path:
+                    model_name = os.path.basename(model_host_path)
+                    tmp_model = f"/data/local/tmp/{model_name}"
+                    push_rc, push_output = run_capture(
+                        ["adb", "push", model_host_path, tmp_model],
+                        timeout=180,
+                    )
+                    inference_lines.append(f"ADB_PUSH_RC={push_rc}")
+                    inference_lines.append(push_output)
+                    if push_rc == 0:
+                        copy_rc, copy_output = run_capture(
+                            [
+                                "adb", "shell", "run-as", PACKAGE, "sh", "-c",
+                                f"mkdir -p files/models && cp {tmp_model} files/models/{model_name}",
+                            ],
+                            timeout=60,
+                        )
+                        inference_lines.append(f"MODEL_COPY_RC={copy_rc}")
+                        inference_lines.append(copy_output)
+                        run_capture(["adb", "shell", "rm", "-f", tmp_model], timeout=30)
+                        if copy_rc == 0:
+                            load_payload = json.dumps({"model": model_name}).encode()
+                            load_request = Request(
+                                base + "/v1/models/load",
+                                data=load_payload,
+                                headers={"Content-Type": "application/json"},
+                                method="POST",
+                            )
+                            with urlopen(load_request, timeout=30) as response:
+                                load_status = response.status
+                                load_body = json.loads(response.read().decode())
+                            inference_lines.append(f"MODEL_LOAD_STATUS={load_status}")
+                            inference_lines.append(f"MODEL_LOAD={load_body}")
+                            assert load_status == 200, load_body
+                            assert load_body.get("loaded") is True, load_body
+
+                            loaded_status, loaded_models = http_get("/v1/models")
+                            inference_lines.append(f"MODELS_AFTER_LOAD_STATUS={loaded_status}")
+                            inference_lines.append(f"MODELS_AFTER_LOAD={loaded_models}")
+                            assert loaded_status == 200
+                            assert any(item.get("id") == model_name for item in loaded_models.get("data", []))
+
+                            chat_payload = json.dumps({
+                                "model": model_name,
+                                "messages": [{"role": "user", "content": "Once upon a time,"}],
+                                "max_tokens": 24,
+                                "temperature": 0.0,
+                            }).encode()
+                            chat_request = Request(
+                                base + "/v1/chat/completions",
+                                data=chat_payload,
+                                headers={"Content-Type": "application/json"},
+                                method="POST",
+                            )
+                            with urlopen(chat_request, timeout=60) as response:
+                                chat_status = response.status
+                                chat_body = json.loads(response.read().decode())
+                            inference_lines.append(f"CHAT_STATUS={chat_status}")
+                            inference_lines.append(f"CHAT_RESPONSE={chat_body}")
+                            assert chat_status == 200, chat_body
+                            assert chat_body.get("object") == "chat.completion"
+                            choices = chat_body.get("choices") or []
+                            assert choices
+                            content = choices[0].get("message", {}).get("content", "")
+                            assert isinstance(content, str) and content.strip()
+                            inference_lines.append(f"GENERATED_TEXT_LENGTH={len(content)}")
+                            inference_verified = True
+                else:
+                    inference_lines.append("INFERENCE_VERIFICATION=SKIPPED;TEST_MODEL_PATH_NOT_SET")
+
+                inference_lines.append(
+                    f"INFERENCE_VERIFICATION={'PASSED' if inference_verified else 'FAILED'}"
+                )
+                inference_report.write_text("\n".join(inference_lines) + "\n", encoding="utf-8")
+                print(
+                    "INFERENCE_VERIFICATION=PASSED"
+                    if inference_verified
+                    else "INFERENCE_VERIFICATION=FAILED"
+                )
+                http_verified = http_verified and inference_verified
             except Exception as exc:
                 http_report.write_text(
                     "HTTP_SERVER_VERIFICATION=FAILED\\n"
