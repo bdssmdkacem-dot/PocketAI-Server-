@@ -313,6 +313,82 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect
           script: python3 diagnostic/scripts/emulator_install_test.py
 
+      - name: Verify local HTTP API from Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 2048M
+          disk-size: 4096M
+          force-avd-creation: true
+          disable-animations: false
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect
+          script: |
+            set -e
+            adb install -r build/app/outputs/flutter-apk/pocketai-native-x64.apk
+            adb shell am force-stop com.pocketai.pocket_ai_server || true
+            adb shell monkey -p com.pocketai.pocket_ai_server 1 >/dev/null
+            adb forward tcp:18080 tcp:8080
+            python3 - <<'PY'
+            import json
+            import time
+            from urllib.error import HTTPError
+            from urllib.request import Request, urlopen
+
+            base = "http://127.0.0.1:18080"
+
+            def get(path):
+                with urlopen(base + path, timeout=3) as response:
+                    return response.status, json.loads(response.read().decode())
+
+            health = None
+            for _ in range(30):
+                try:
+                    status, health = get("/health")
+                    if status == 200 and health.get("status") == "ok":
+                        break
+                except Exception:
+                    time.sleep(1)
+            else:
+                raise RuntimeError("HTTP /health did not become ready")
+
+            assert health.get("native_ready") is True, health
+            assert health.get("model_loaded") is False, health
+            print("HEALTH_OK", health)
+
+            status, models = get("/v1/models")
+            assert status == 200, status
+            assert models.get("object") == "list", models
+            assert models.get("data") == [], models
+            print("MODELS_OK", models)
+
+            payload = json.dumps({
+                "model": "none",
+                "messages": [{"role": "user", "content": "hello"}]
+            }).encode()
+            request = Request(
+                base + "/v1/chat/completions",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                urlopen(request, timeout=3)
+                raise AssertionError("Expected HTTP 409 when no model is loaded")
+            except HTTPError as error:
+                assert error.code == 409, error.code
+                body = json.loads(error.read().decode())
+                assert "error" in body, body
+                print("CHAT_NO_MODEL_OK", body)
+
+            print("HTTP_SERVER_VERIFICATION=PASSED")
+            PY
+            adb forward --remove tcp:18080 || true
+
       - name: Diagnostic summary
         if: always()
         run: |
