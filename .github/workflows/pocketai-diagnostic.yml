@@ -30,6 +30,18 @@ jobs:
             flutter create . --platforms=android --org com.pocketai --project-name pocket_ai_server
           fi
 
+      - name: Enable local HTTP server networking
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          permission = '<uses-permission android:name="android.permission.INTERNET" />'
+          if permission not in s:
+              s = s.replace('<application', permission + '\\n    <application', 1)
+          p.write_text(s)
+          PY
+
       - name: Prepare Android NDK
         run: |
           SDK_ROOT="$ANDROID_SDK_ROOT"
