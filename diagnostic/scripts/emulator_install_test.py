@@ -166,6 +166,7 @@ with install_report.open("a", encoding="utf-8") as f:
         forward_rc, forward_output = run_capture(["adb", "forward", "tcp:18080", "tcp:8080"], timeout=30)
         http_verified = False
         runtime_verified_by_http = False
+        inference_verified = False
         if forward_rc == 0:
             try:
                 from urllib.error import HTTPError
@@ -232,7 +233,11 @@ with install_report.open("a", encoding="utf-8") as f:
                 # Real GGUF load + inference verification.
                 inference_report = DIAG / "inference.txt"
                 model_host_path = os.environ.get("TEST_MODEL_PATH", "").strip()
-                inference_verified = False
+                if not model_host_path:
+                    default_model = ROOT / "diagnostic" / "model" / "stories15M-q4_0.gguf"
+                    if default_model.is_file():
+                        model_host_path = str(default_model)
+                print("TEST_MODEL_PATH=" + (model_host_path or "<not-set>"))
                 inference_lines = []
                 if model_host_path:
                     model_name = os.path.basename(model_host_path)
@@ -414,4 +419,5 @@ print(f"LOGCAT_REPORT={logcat_report}")
 print(f"NATIVE_RUNTIME_VERIFICATION={runtime_verified}")
 print(f"HTTP_VERIFIED={http_verified}")
 print(f"RUNTIME_VERIFIED_BY_HTTP={runtime_verified_by_http}")
-sys.exit(0 if (effective_install and runtime_verified_by_http and http_verified) else 1)
+print(f"INFERENCE_VERIFIED={inference_verified}")
+sys.exit(0 if (effective_install and runtime_verified_by_http and inference_verified) else 1)
