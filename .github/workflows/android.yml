@@ -124,8 +124,13 @@ jobs:
         run: |
           set -e
           python3 scripts/configure_android_native.py
+          test -f android/app/src/main/cpp/CMakeLists.txt
           flutter clean
           rm -rf android/.cxx android/app/.cxx build
+          mkdir -p android/app/src/main/cpp
+          cp android/pocketai_template/app/src/main/cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
+          cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
+          test -f android/app/src/main/cpp/CMakeLists.txt
           flutter pub get
           flutter build apk --release --target-platform android-arm64
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-server-arm64.apk
@@ -168,8 +173,13 @@ jobs:
         run: |
           set -e
           python3 scripts/configure_android_native.py
+          test -f android/app/src/main/cpp/CMakeLists.txt
           flutter clean
           rm -rf android/.cxx android/app/.cxx build
+          mkdir -p android/app/src/main/cpp
+          cp android/pocketai_template/app/src/main/cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
+          cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
+          test -f android/app/src/main/cpp/CMakeLists.txt
           flutter pub get
           flutter build apk --release --target-platform android-x64
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-server-x86_64.apk
