@@ -1,0 +1,256 @@
+name: PocketAI Universal Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocketai-universal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  universal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create Android platform scaffold
+        run: |
+          if [ ! -d android/app ]; then
+            flutter create . --platforms=android --org com.pocketai --project-name pocket_ai_server
+          fi
+
+      - name: Prepare Android NDK
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          if [ -d "$SDK_ROOT/ndk/27.3.13750724" ]; then
+            NDK_DIR="$SDK_ROOT/ndk/27.3.13750724"
+          else
+            echo "Required NDK 27.3.13750724 was not found."
+            ls -la "$SDK_ROOT/ndk" || true
+            exit 1
+          fi
+          echo "ANDROID_NDK=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+
+      - name: Fetch pinned llama.cpp
+        run: bash scripts/fetch_llama_cpp.sh
+
+      - name: Restore PocketAI native files
+        run: |
+          mkdir -p android/app/src/main/kotlin/com/pocketai/pocket_ai_server
+          mkdir -p android/app/src/main/cpp
+          cp android/pocketai_template/app/src/main/kotlin/com/pocketai/server/MainActivity.kt android/app/src/main/kotlin/com/pocketai/pocket_ai_server/MainActivity.kt
+          cp android/pocketai_template/app/src/main/kotlin/com/pocketai/server/NativeAi.kt android/app/src/main/kotlin/com/pocketai/pocket_ai_server/NativeAi.kt
+          cp android/pocketai_template/app/src/main/cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
+          cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
+
+      - name: Flutter dependencies
+        run: flutter pub get
+
+      - name: Flutter analyze
+        run: flutter analyze
+
+      - name: Flutter tests
+        run: flutter test
+
+      - name: Configure universal JNI packaging
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+
+          if 'jniLibs.srcDirs("src/main/jniLibs")' not in s:
+              s = s.replace(
+                  "android {",
+                  '''android {
+              sourceSets {
+                  getByName("main") {
+                      jniLibs.srcDirs("src/main/jniLibs")
+                  }
+              }
+              ''',
+                  1,
+              )
+
+          if "useLegacyPackaging = false" not in s:
+              s = s.replace(
+                  "android {",
+                  '''android {
+              packaging {
+                  jniLibs {
+                      useLegacyPackaging = false
+                  }
+              }
+              ''',
+                  1,
+              )
+
+          p.write_text(s)
+          PY
+
+          grep -n -A8 -B2 "jniLibs" android/app/build.gradle.kts
+
+      - name: Build native libraries for all Android ABIs
+        run: python3 scripts/build_android_native_universal.py
+
+      - name: Verify JNI matrix before Flutter packaging
+        run: |
+          set -e
+          for abi in armeabi-v7a arm64-v8a x86_64; do
+            echo "=== $abi ==="
+            find "android/app/src/main/jniLibs/$abi" -maxdepth 1 -type f -name '*.so' -print | sort
+            for lib in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+              test -s "android/app/src/main/jniLibs/$abi/$lib"
+            done
+          done
+
+      - name: Build universal fat APK
+        run: |
+          set -e
+          flutter build apk --release
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          cp "$APK" build/app/outputs/flutter-apk/pocketai-universal.apk
+
+      - name: Sign universal APK
+        run: |
+          set -e
+          APK="build/app/outputs/flutter-apk/pocketai-universal.apk"
+          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
+          KEYSTORE="$HOME/.android/debug.keystore"
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$KEYSTORE" ]; then
+            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android \
+              -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 \
+              -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          "$BT/zipalign" -f -P 4 4 "$APK" "${APK%.apk}-aligned.apk"
+          mv "${APK%.apk}-aligned.apk" "$APK"
+          "$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android \
+            --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+          "$BT/apksigner" verify --verbose --print-certs "$APK"
+
+      - name: Validate universal APK
+        run: |
+          set -e
+          APK="build/app/outputs/flutter-apk/pocketai-universal.apk"
+          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
+
+          echo "=== APK ==="
+          ls -lh "$APK"
+          sha256sum "$APK"
+          unzip -t "$APK"
+
+          echo "=== ABIs ==="
+          unzip -Z1 "$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\\1#' | sort -u
+
+          for abi in armeabi-v7a arm64-v8a x86_64; do
+            echo "=== Validate $abi ==="
+            unzip -Z1 "$APK" | grep -Fxq "lib/$abi/libflutter.so"
+            unzip -Z1 "$APK" | grep -Fxq "lib/$abi/libapp.so"
+            for lib in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+              unzip -Z1 "$APK" | grep -Fxq "lib/$abi/$lib"
+            done
+          done
+
+          "$BT/zipalign" -c -P 4 -v 4 "$APK"
+          "$BT/apksigner" verify --verbose --print-certs "$APK"
+
+      - name: Build ABI split APKs for matrix validation
+        run: |
+          set -e
+          flutter build apk --release --split-per-abi
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk build/app/outputs/flutter-apk/pocketai-armeabi-v7a.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/pocketai-arm64-v8a.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk build/app/outputs/flutter-apk/pocketai-x86_64.apk
+
+      - name: Validate ABI split APKs
+        run: |
+          set -e
+          for pair in \
+            "armeabi-v7a:pocketai-armeabi-v7a.apk" \
+            "arm64-v8a:pocketai-arm64-v8a.apk" \
+            "x86_64:pocketai-x86_64.apk"; do
+            abi="${pair%%:*}"
+            apk="${pair##*:}"
+            path="build/app/outputs/flutter-apk/$apk"
+            test -s "$path"
+            unzip -t "$path"
+            unzip -Z1 "$path" | grep -Fxq "lib/$abi/libflutter.so"
+            unzip -Z1 "$path" | grep -Fxq "lib/$abi/libapp.so"
+            for lib in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+              unzip -Z1 "$path" | grep -Fxq "lib/$abi/$lib"
+            done
+          done
+
+      - name: Download tiny GGUF inference test model
+        run: |
+          set -e
+          mkdir -p diagnostic/model
+          curl -L --fail --retry 3 --retry-delay 2             -o diagnostic/model/stories15M-q4_0.gguf             https://huggingface.co/ggml-org/tiny-llamas/resolve/main/stories15M-q4_0.gguf
+          test -s diagnostic/model/stories15M-q4_0.gguf
+          ls -lh diagnostic/model/stories15M-q4_0.gguf
+          sha256sum diagnostic/model/stories15M-q4_0.gguf
+
+      - name: Android 13 x86_64 emulator universal APK install and runtime test
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          TEST_MODEL_PATH: ${{ github.workspace }}/diagnostic/model/stories15M-q4_0.gguf
+          POCKETAI_TEST_APK: build/app/outputs/flutter-apk/pocketai-universal.apk
+        with:
+          api-level: 33
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 2048M
+          disk-size: 4096M
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect
+          script: python3 diagnostic/scripts/emulator_install_test.py
+
+      - name: Universal build summary
+        if: always()
+        run: |
+          set +e
+          mkdir -p diagnostic
+          {
+            echo "POCKETAI_UNIVERSAL_BUILD=1"
+            echo "SUPPORTED_ABIS=armeabi-v7a arm64-v8a x86_64"
+            echo "UNIVERSAL_APK=build/app/outputs/flutter-apk/pocketai-universal.apk"
+            echo "The universal APK intentionally contains native binaries for all Flutter-supported Android ABIs."
+            echo "Android PackageManager selects the compatible ABI at installation time."
+          } | tee diagnostic/UNIVERSAL_SUMMARY.txt
+
+      - name: Upload universal APK bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketai-universal-android
+          if-no-files-found: warn
+          path: |
+            build/app/outputs/flutter-apk/pocketai-universal.apk
+            build/app/outputs/flutter-apk/pocketai-armeabi-v7a.apk
+            build/app/outputs/flutter-apk/pocketai-arm64-v8a.apk
+            build/app/outputs/flutter-apk/pocketai-x86_64.apk
+            diagnostic/

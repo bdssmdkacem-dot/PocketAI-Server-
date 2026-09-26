@@ -13,8 +13,13 @@ DIAG = ROOT / "diagnostic" / "emulator"
 DIAG.mkdir(parents=True, exist_ok=True)
 
 PACKAGE = "com.pocketai.pocket_ai_server"
-apk = ROOT / "build" / "app" / "outputs" / "flutter-apk" / "pocketai-native-x64.apk"
-install_report = DIAG / "pocketai-native-x64-install.txt"
+apk_relative = os.environ.get(
+    "POCKETAI_TEST_APK",
+    "build/app/outputs/flutter-apk/pocketai-native-x64.apk",
+).strip()
+apk = ROOT / apk_relative
+apk_label = apk.stem
+install_report = DIAG / f"{apk_label}-install.txt"
 device_report = DIAG / "device.txt"
 launch_report = DIAG / "launch.txt"
 logcat_report = DIAG / "launch-logcat.txt"
@@ -53,7 +58,7 @@ with device_report.open("w", encoding="utf-8") as f:
             f.write(f"COMMAND_RC={rc}\n")
 
 install_report.write_text(
-    "===== INSTALL TEST: Native x64 runtime APK =====\n"
+    "===== INSTALL TEST: PocketAI test APK =====\n"
     f"APK={apk}\n"
     f"APK_EXISTS={apk.is_file()}\n",
     encoding="utf-8",
@@ -62,13 +67,13 @@ install_report.write_text(
 if not apk.is_file():
     with install_report.open("a", encoding="utf-8") as f:
         f.write("INSTALL_COMMAND_ERROR=APK not found\nEXIT_CODE=126\n")
-    print("Native x64 runtime APK not found", file=sys.stderr)
+    print("PocketAI test APK not found", file=sys.stderr)
     sys.exit(0)
 
 # Push first, then ask Android's package manager to install the local file.
 # This avoids adb's streamed-install path, which can be extremely slow on the
 # heavily loaded x86_64 GitHub Actions emulator for large native APKs.
-remote_apk = "/data/local/tmp/pocketai-native-x64.apk"
+remote_apk = "/data/local/tmp/pocketai-test.apk"
 push_rc, push_output = run_capture(
     ["adb", "push", str(apk), remote_apk],
     timeout=900,
@@ -95,7 +100,7 @@ effective_install = rc == 0 or installed
 
 with install_report.open("a", encoding="utf-8") as f:
     f.write("===== INSTALL COMMAND =====\n")
-    f.write("adb push " + str(apk) + " /data/local/tmp/pocketai-native-x64.apk\\n")
+    f.write("adb push " + str(apk) + " /data/local/tmp/pocketai-test.apk\\n")
     f.write("adb shell pm install -r -t /data/local/tmp/pocketai-native-x64.apk\\n")
     f.write("===== INSTALL OUTPUT =====\n")
     f.write(output)
@@ -130,6 +135,75 @@ with install_report.open("a", encoding="utf-8") as f:
 
         # The emulator is heavily loaded, so allow extra time for Flutter startup.
         time.sleep(10)
+
+        # Check Android system health before interpreting a missing PocketAI PID
+        # as an application failure. GitHub Actions x86_64 emulators can surface
+        # system ANRs while the APK itself is intact.
+        post_launch_log_rc, post_launch_log = run_capture(
+            ["adb", "logcat", "-d", "-v", "time", "-t", "1500"],
+            timeout=60,
+        )
+        # Only classify a system failure when logcat contains a concrete ANR
+        # or an explicit System UI unresponsive message. RoleControllerManager
+        # messages by themselves are normal Android framework noise and can
+        # occur without an actual system ANR, so they must not fail the test.
+        system_anr_patterns = (
+            "ANR in com.android.systemui",
+            "ANR in com.android.phone",
+            "ANR in com.android.role",
+            "System UI isn't responding",
+            "System UI is not responding",
+        )
+        system_anr_hits = [
+            line for line in post_launch_log.splitlines()
+            if any(pattern in line for pattern in system_anr_patterns)
+        ]
+
+        pid_rc_precheck, pid_output_precheck = run_capture(
+            ["adb", "shell", "pidof", PACKAGE],
+            timeout=30,
+        )
+
+        if system_anr_hits:
+            result = DIAG / "RESULT.txt"
+            result.write_text(
+                "DIAGNOSTIC_RESULT=EMULATOR_FAILURE\n"
+                "FAILURE_CLASS=SYSTEM_ANR\n"
+                f"PIDOF_RC={pid_rc_precheck}\n"
+                f"PIDOF_OUTPUT={pid_output_precheck.strip()!r}\n"
+                f"LOGCAT_COMMAND_RC={post_launch_log_rc}\n"
+                "SYSTEM_ANR_EVIDENCE=\n"
+                + "\n".join(system_anr_hits[-40:])
+                + "\n",
+                encoding="utf-8",
+            )
+            (DIAG / "system-health.txt").write_text(
+                "=== POST-LAUNCH SYSTEM HEALTH ===\n"
+                f"LOGCAT_COMMAND_RC={post_launch_log_rc}\n"
+                "=== SYSTEM ANR EVIDENCE ===\n"
+                + "\n".join(system_anr_hits[-200:])
+                + "\n",
+                encoding="utf-8",
+            )
+            launch_report.write_text(
+                "===== LAUNCH TEST =====\n"
+                f"PACKAGE={PACKAGE}\n"
+                "CLASSIFICATION=EMULATOR_FAILURE\n"
+                "REASON=SYSTEM_ANR\n"
+                f"PIDOF={pid_output_precheck.strip()!r}\n"
+                "HTTP_AND_INFERENCE=SKIPPED\n",
+                encoding="utf-8",
+            )
+            logcat_report.write_text(
+                "===== LOGCAT AFTER POCKETAI LAUNCH =====\n"
+                + post_launch_log
+                + f"\nLOGCAT_COMMAND_RC={post_launch_log_rc}\n",
+                encoding="utf-8",
+            )
+            print("DIAGNOSTIC_RESULT=EMULATOR_FAILURE")
+            print("FAILURE_CLASS=SYSTEM_ANR")
+            print("POCKETAI_RUNTIME_TEST=SKIPPED")
+            sys.exit(2)
 
         checks = [
             ("PIDOF", ["adb", "shell", "pidof", PACKAGE]),
@@ -387,7 +461,7 @@ with install_report.open("a", encoding="utf-8") as f:
     encoding="utf-8",
 )
 
-print("===== X64 APK INSTALL RESULT =====")
+print("===== POCKETAI APK INSTALL RESULT =====")
 print(output.strip())
 print("--- INSTALL COMMAND (REPRODUCIBLE) ---")
 print("adb push " + str(apk) + " /data/local/tmp/pocketai-native-x64.apk")
@@ -401,7 +475,7 @@ try:
     print("\n".join(report_tail))
 except Exception as exc:
     print(f"REPORT_READ_ERROR={exc!r}")
-print(f"FLUTTER_X64_INSTALL_RC={rc}")
+print(f"POCKETAI_INSTALL_RC={rc}")
 print(f"INSTALL_VERIFIED={effective_install}")
 print(f"INSTALL_REPORT={install_report}")
 print(f"LAUNCH_REPORT={launch_report}")

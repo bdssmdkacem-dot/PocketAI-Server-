@@ -21,21 +21,21 @@ static void free_model_locked() {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_pocketai_server_NativeAi_isReady(JNIEnv*, jobject) { return JNI_TRUE; }
+Java_com_pocketai_pocket_1ai_1server_NativeAi_isReady(JNIEnv*, jobject) { return JNI_TRUE; }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_pocketai_server_NativeAi_status(JNIEnv* env, jobject) {
+Java_com_pocketai_pocket_1ai_1server_NativeAi_status(JNIEnv* env, jobject) {
     return env->NewStringUTF("llama.cpp-linked");
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_pocketai_server_NativeAi_version(JNIEnv* env, jobject) {
+Java_com_pocketai_pocket_1ai_1server_NativeAi_version(JNIEnv* env, jobject) {
     const char *version = llama_version();
     return env->NewStringUTF(version ? version : "unknown");
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_pocketai_server_NativeAi_runtimeCheck(JNIEnv* env, jobject) {
+Java_com_pocketai_pocket_1ai_1server_NativeAi_runtimeCheck(JNIEnv* env, jobject) {
     std::lock_guard<std::mutex> lock(g_mutex);
     llama_backend_init();
     const char *version = llama_version();
@@ -44,7 +44,7 @@ Java_com_pocketai_server_NativeAi_runtimeCheck(JNIEnv* env, jobject) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_pocketai_server_NativeAi_loadModel(JNIEnv* env, jobject, jstring path) {
+Java_com_pocketai_pocket_1ai_1server_NativeAi_loadModel(JNIEnv* env, jobject, jstring path) {
     const char *chars = env->GetStringUTFChars(path, nullptr);
     if (!chars) return JNI_FALSE;
 
@@ -87,19 +87,19 @@ Java_com_pocketai_server_NativeAi_loadModel(JNIEnv* env, jobject, jstring path) 
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_pocketai_server_NativeAi_unloadModel(JNIEnv*, jobject) {
+Java_com_pocketai_pocket_1ai_1server_NativeAi_unloadModel(JNIEnv*, jobject) {
     std::lock_guard<std::mutex> lock(g_mutex);
     free_model_locked();
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_pocketai_server_NativeAi_isModelLoaded(JNIEnv*, jobject) {
+Java_com_pocketai_pocket_1ai_1server_NativeAi_isModelLoaded(JNIEnv*, jobject) {
     std::lock_guard<std::mutex> lock(g_mutex);
     return g_model != nullptr && g_ctx != nullptr;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_pocketai_server_NativeAi_loadedModelName(JNIEnv* env, jobject) {
+Java_com_pocketai_pocket_1ai_1server_NativeAi_loadedModelName(JNIEnv* env, jobject) {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_model_path.empty()) return env->NewStringUTF("");
     const auto pos = g_model_path.find_last_of("/\\");
@@ -108,7 +108,7 @@ Java_com_pocketai_server_NativeAi_loadedModelName(JNIEnv* env, jobject) {
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_pocketai_server_NativeAi_generate(JNIEnv* env, jobject, jstring prompt, jint max_tokens, jfloat) {
+Java_com_pocketai_pocket_1ai_1server_NativeAi_generate(JNIEnv* env, jobject, jstring prompt, jint max_tokens, jfloat) {
     const char *chars = env->GetStringUTFChars(prompt, nullptr);
     if (!chars) return env->NewStringUTF("ERROR: invalid prompt");
 

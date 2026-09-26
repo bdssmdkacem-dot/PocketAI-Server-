@@ -30,16 +30,9 @@ if ndk_count == 0:
     )
 
 # Native code is built by the CI workflow with standalone CMake/NDK and
-# packaged through src/main/jniLibs. Do not enable AGP externalNativeBuild:
-# having both CMake output and jniLibs creates duplicate .so entries.
-# Flutter's target-platform flag does not always constrain externalNativeBuild.
-# Explicitly restrict the Android native build to the ABI selected by POCKETAI_ABI.
-text = re.sub(
-    r"(?s)\n\s*ndk\s*\{\s*abiFilters\s*=\s*[^}]+\}",
-    "",
-    text,
-)
-
+# packaged through src/main/jniLibs. Do not constrain Flutter's own engine
+# packaging with AGP abiFilters: Flutter's --target-platform flag must remain
+# authoritative so libflutter.so/libapp.so are included for the selected ABI.
 default_config = re.search(r"(?m)^\s*defaultConfig\s*\{", text)
 if not default_config:
     raise SystemExit("defaultConfig block was not found in android/app/build.gradle.kts")
@@ -47,7 +40,7 @@ if not default_config:
 insert_at = default_config.end()
 text = (
     text[:insert_at]
-    + f'''\n        ndk {{\n            abiFilters.clear()\n            abiFilters += listOf("{abi}")\n        }}\n        externalNativeBuild {{\n            cmake {{\n                targets += listOf("pocket_ai")\n            }}\n        }}\n'''
+    + '''\n        externalNativeBuild {{\n            cmake {{\n                targets += listOf("pocket_ai")\n            }}\n        }}\n'''
     + text[insert_at:]
 )
 
@@ -105,20 +98,17 @@ if 'useLegacyPackaging = false' not in text:
 
 app_gradle.write_text(text)
 
-# Keep the selected ABI available to the diagnostic Gradle environment.
+# Do not set android.injected.build.abi here. That internal Gradle
+# override can suppress Flutter engine artifacts such as libflutter.so.
 properties = gradle_properties.read_text() if gradle_properties.exists() else ""
 properties = re.sub(
     r"(?m)^\s*android\.injected\.build\.abi\s*=.*$",
     "",
     properties,
 )
-if properties and not properties.endswith("\n"):
-    properties += "\n"
-properties += f"android.injected.build.abi={abi}\n"
 gradle_properties.write_text(properties)
 
 print("Configured Android native build:")
 print(f"  ndkVersion = {ndk_version}")
-print(f"  abiFilters = {abi}")
-print(f"  android.injected.build.abi = {abi}")
+print("  Flutter ABI selection = flutter --target-platform")
 print("  release signing = debug keystore (CI test artifact)")
