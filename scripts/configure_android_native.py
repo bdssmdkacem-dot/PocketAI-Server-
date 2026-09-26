@@ -59,7 +59,6 @@ if 'path = file("src/main/cpp/CMakeLists.txt")' not in text:
         '''    externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            targets += listOf("pocket_ai")
         }
     }
 
