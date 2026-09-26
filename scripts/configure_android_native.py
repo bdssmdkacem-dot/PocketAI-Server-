@@ -64,7 +64,7 @@ text = (
 
 # Register the CMake project at the Android module level so AGP actually
 # builds and packages the selected native ABI into the APK.
-if 'path = file("src/main/cpp/CMakeLists.txt")' not in text:
+if 'path = file("../../pocketai_template/app/src/main/cpp/CMakeLists.txt")' not in text:
     text = text.replace(
         "    buildTypes {",
         '''    externalNativeBuild {
