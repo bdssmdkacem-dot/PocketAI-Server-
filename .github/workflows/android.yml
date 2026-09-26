@@ -190,11 +190,11 @@ jobs:
           flutter pub get
           flutter build apk --release --target-platform android-x64
           echo "=== Verify Gradle merged JNI payload ==="
-          ./gradlew :app:mergeReleaseJniLibFolders --no-daemon
+          (cd android && ./gradlew :app:mergeReleaseJniLibFolders --no-daemon)
           find android/app/src/main/jniLibs -type f -name '*.so' -print | sort
-          find build/app/intermediates/merged_jni_libs -type f -name '*.so' -print 2>/dev/null | sort || true
-          test -n "$(find build/app/intermediates/merged_jni_libs -type f -path '*/lib/x86_64/libpocket_ai.so' -print -quit 2>/dev/null)"
-          test -n "$(find build/app/intermediates/merged_jni_libs -type f -path '*/lib/x86_64/libllama.so' -print -quit 2>/dev/null)"
+          find android/app/build/intermediates/merged_jni_libs -type f -name '*.so' -print 2>/dev/null | sort || true
+          test -n "$(find android/app/build/intermediates/merged_jni_libs -type f -path '*/lib/x86_64/libpocket_ai.so' -print -quit 2>/dev/null)"
+          test -n "$(find android/app/build/intermediates/merged_jni_libs -type f -path '*/lib/x86_64/libllama.so' -print -quit 2>/dev/null)"
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-server-x86_64.apk
           echo "=== Verify native x86_64 payload ==="
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep '^lib/' | sort
