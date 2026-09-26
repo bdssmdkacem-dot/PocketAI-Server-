@@ -180,6 +180,13 @@ jobs:
           echo "=== MANIFEST PACKAGE / SDK ==="
           "$AAPT2" dump xmltree "$APK" AndroidManifest.xml | grep -E 'package=|minSdkVersion=|targetSdkVersion=|versionCode=|versionName=' || true
 
+      - name: Preserve ARM64 APK artifact
+        run: |
+          set -e
+          mkdir -p artifacts
+          cp build/app/outputs/flutter-apk/pocketai-server-arm64.apk artifacts/pocketai-server-arm64.apk
+          cp build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk artifacts/pocketai-flutter-smoke.apk
+
       - name: Build native x86_64 runtime APK
         env:
           POCKETAI_ABI: x86_64
