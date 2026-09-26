@@ -46,7 +46,7 @@ if ndk_count == 0:
 # Flutter's target-platform flag does not always constrain externalNativeBuild.
 # Explicitly restrict the Android native build to the ABI selected by POCKETAI_ABI.
 text = re.sub(
-    r"(?s)\n\s*ndk\s*\{\s*abiFilters\s*=\s*[^}]+\}",
+    r"(?s)\n\s*ndk\s*\{.*?\}",
     "",
     text,
 )
@@ -114,7 +114,7 @@ if 'jniLibs.setSrcDirs(listOf("src/main/jniLibs"))' not in text:
         '''android {
     sourceSets {
         getByName("main") {
-            jniLibs.srcDirs("src/main/jniLibs")
+            jniLibs.setSrcDirs(listOf("src/main/jniLibs"))
         }
     }
 ''',
