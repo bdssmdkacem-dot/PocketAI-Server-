@@ -29,7 +29,7 @@ jobs:
 
       - name: Prepare Android NDK
         run: |
-          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          SDK_ROOT="\${ANDROID_SDK_ROOT:-\${ANDROID_HOME}}"
           if [ -d "$SDK_ROOT/ndk/27.3.13750724" ]; then
             NDK_DIR="$SDK_ROOT/ndk/27.3.13750724"
           else
@@ -192,88 +192,8 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-server-x86_64.apk
           echo "=== Verify native x86_64 payload ==="
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep '^lib/' | sort
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep -q '^lib/x86_64/libpocket_ai\.so
-
-      - name: Sign x86_64 APK
-        run: |
-          APK="build/app/outputs/flutter-apk/pocketai-server-x86_64.apk"
-          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
-          KEYSTORE="$HOME/.android/debug.keystore"
-          mkdir -p "$HOME/.android"
-          if [ ! -f "$KEYSTORE" ]; then
-            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
-
-      - name: Diagnose x86_64 APK compatibility
-        run: |
-          APK="build/app/outputs/flutter-apk/pocketai-server-x86_64.apk"
-          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
-          AAPT2="$(dirname "$APKSIGNER")/aapt2"
-          ZIPALIGN="$(dirname "$APKSIGNER")/zipalign"
-          echo "=== APK FILE ==="
-          ls -lh "$APK"
-          sha256sum "$APK"
-          echo "=== AAPT2 BADGING ==="
-          "$AAPT2" dump badging "$APK"
-          echo "=== APK NATIVE ABIS ==="
-          unzip -Z1 "$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\1#' | sort -u
-          echo "=== ZIPALIGN ==="
-          "$ZIPALIGN" -c -P 4 -v 4 "$APK"
-          echo "=== APK SIGNATURE ==="
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
-
-      - name: Upload APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: pocketai-server-release
-          path: |
-            build/app/outputs/flutter-apk/pocketai-server-arm64.apk
-            build/app/outputs/flutter-apk/pocketai-server-x86_64.apk
-            build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk
-
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep -q '^lib/x86_64/libllama\.so
-
-      - name: Sign x86_64 APK
-        run: |
-          APK="build/app/outputs/flutter-apk/pocketai-server-x86_64.apk"
-          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
-          KEYSTORE="$HOME/.android/debug.keystore"
-          mkdir -p "$HOME/.android"
-          if [ ! -f "$KEYSTORE" ]; then
-            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
-
-      - name: Diagnose x86_64 APK compatibility
-        run: |
-          APK="build/app/outputs/flutter-apk/pocketai-server-x86_64.apk"
-          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
-          AAPT2="$(dirname "$APKSIGNER")/aapt2"
-          ZIPALIGN="$(dirname "$APKSIGNER")/zipalign"
-          echo "=== APK FILE ==="
-          ls -lh "$APK"
-          sha256sum "$APK"
-          echo "=== AAPT2 BADGING ==="
-          "$AAPT2" dump badging "$APK"
-          echo "=== APK NATIVE ABIS ==="
-          unzip -Z1 "$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\1#' | sort -u
-          echo "=== ZIPALIGN ==="
-          "$ZIPALIGN" -c -P 4 -v 4 "$APK"
-          echo "=== APK SIGNATURE ==="
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
-
-      - name: Upload APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: pocketai-server-release
-          path: |
-            build/app/outputs/flutter-apk/pocketai-server-arm64.apk
-            build/app/outputs/flutter-apk/pocketai-server-x86_64.apk
-            build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk
-
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep -q '^lib/x86_64/libpocket_ai\.so$'
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep -q '^lib/x86_64/libllama\.so$'
 
       - name: Sign x86_64 APK
         run: |
