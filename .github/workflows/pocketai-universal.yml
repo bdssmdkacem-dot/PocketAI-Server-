@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pocketai-universal-\${{ github.ref }}
+  group: pocketai-universal-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
 
       - name: Prepare Android NDK
         run: |
-          SDK_ROOT="\${ANDROID_SDK_ROOT:-\${ANDROID_HOME}}"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
           if [ -d "\$SDK_ROOT/ndk/27.3.13750724" ]; then
             NDK_DIR="\$SDK_ROOT/ndk/27.3.13750724"
           else
@@ -140,8 +140,8 @@ jobs:
               -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 \
               -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          "\$BT/zipalign" -f -P 4 4 "\$APK" "\${APK%.apk}-aligned.apk"
-          mv "\${APK%.apk}-aligned.apk" "\$APK"
+          "\$BT/zipalign" -f -P 4 4 "\$APK" "${APK%.apk}-aligned.apk"
+          mv "${APK%.apk}-aligned.apk" "\$APK"
           "\$BT/apksigner" sign --ks "\$KEYSTORE" --ks-pass pass:android \
             --key-pass pass:android --ks-key-alias AndroidDebugKey "\$APK"
           "\$BT/apksigner" verify --verbose --print-certs "\$APK"
@@ -187,8 +187,8 @@ jobs:
             "armeabi-v7a:pocketai-armeabi-v7a.apk" \
             "arm64-v8a:pocketai-arm64-v8a.apk" \
             "x86_64:pocketai-x86_64.apk"; do
-            abi="\${pair%%:*}"
-            apk="\${pair##*:}"
+            abi="${pair%%:*}"
+            apk="${pair##*:}"
             path="build/app/outputs/flutter-apk/\$apk"
             test -s "\$path"
             unzip -t "\$path"
@@ -199,10 +199,19 @@ jobs:
             done
           done
 
+      - name: Download tiny GGUF inference test model
+        run: |
+          set -e
+          mkdir -p diagnostic/model
+          curl -L --fail --retry 3 --retry-delay 2             -o diagnostic/model/stories15M-q4_0.gguf             https://huggingface.co/ggml-org/tiny-llamas/resolve/main/stories15M-q4_0.gguf
+          test -s diagnostic/model/stories15M-q4_0.gguf
+          ls -lh diagnostic/model/stories15M-q4_0.gguf
+          sha256sum diagnostic/model/stories15M-q4_0.gguf
+
       - name: Android 13 x86_64 emulator universal APK install and runtime test
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          TEST_MODEL_PATH: \${{ github.workspace }}/diagnostic/model/stories15M-q4_0.gguf
+          TEST_MODEL_PATH: ${{ github.workspace }}/diagnostic/model/stories15M-q4_0.gguf
           POCKETAI_TEST_APK: build/app/outputs/flutter-apk/pocketai-universal.apk
         with:
           api-level: 33
