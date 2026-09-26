@@ -62,20 +62,26 @@ text = (
     + text[insert_at:]
 )
 
-# Register the CMake project at the Android module level. The workflow restores
-# this file into android/app/src/main/cpp before each native configuration.
-if 'externalNativeBuild {' not in text:
-    text = text.replace(
-        "    buildTypes {",
-        '''    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-        }
-    }
+# Native runtime is built with standalone CMake in CI and packaged via jniLibs.
+# Remove any stale externalNativeBuild block left by older workflow revisions.
+def strip_external_native_build(source):
+    marker = "    externalNativeBuild {"
+    start = source.find(marker)
+    if start == -1:
+        return source
+    depth = 0
+    end = None
+    for i in range(start, len(source)):
+        if source[i] == "{":
+            depth += 1
+        elif source[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    return source[:start] + source[end:] if end else source
 
-    buildTypes {''',
-        1,
-    )
+text = strip_external_native_build(text)
 
 # The CI APK is an installable test artifact. The generated Flutter scaffold
 # may leave release unsigned, so explicitly use the generated debug keystore
