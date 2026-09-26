@@ -389,6 +389,14 @@ jobs:
             echo "Full native ARM64 APK: built, signed and statically checked"
             echo "ARM64 native APK emulator installation: intentionally skipped due ABI mismatch"
             echo
+            if [ -f "$DIAG_DIR/RESULT.txt" ]; then
+              echo "=== CLASSIFICATION ==="
+              cat "$DIAG_DIR/RESULT.txt"
+            else
+              echo "DIAGNOSTIC_RESULT=NO_CLASSIFICATION_FILE"
+              echo "The emulator test did not produce a final classification."
+            fi
+            echo
             echo "The emulator installation file contains the exact adb/PackageManager result."
           } > "$DIAG_DIR/SUMMARY.txt"
           cat "$DIAG_DIR/SUMMARY.txt"
