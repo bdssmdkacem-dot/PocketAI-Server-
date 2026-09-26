@@ -108,7 +108,7 @@ if "signingConfig" not in release_body:
 
 # Explicitly register the JNI library directory so the prebuilt native runtime
 # is unambiguously included in the Android main source set.
-if 'jniLibs.srcDirs("src/main/jniLibs")' not in text:
+if 'jniLibs.setSrcDirs(listOf("src/main/jniLibs"))' not in text:
     text = text.replace(
         "android {",
         '''android {
