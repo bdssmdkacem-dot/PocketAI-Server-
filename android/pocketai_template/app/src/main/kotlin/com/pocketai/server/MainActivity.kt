@@ -41,6 +41,12 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Start the local OpenAI-compatible API as soon as the Android activity
+        // is initialized. The server must not depend on a Flutter UI action.
+        if (server == null) {
+            server = LocalAiServer(filesDir, nativeAi).also { it.start() }
+        }
     }
 
     private fun statusMap(): Map<String, Any> = mapOf(
