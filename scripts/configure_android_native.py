@@ -58,13 +58,24 @@ if not default_config:
 insert_at = default_config.end()
 text = (
     text[:insert_at]
-    + f'''\n        ndk {{\n            abiFilters.clear()\n            abiFilters += listOf("{abi}")\n        }}\n        externalNativeBuild {{\n            cmake {{\n                targets += listOf("pocket_ai")\n            }}\n        }}\n'''
+    + f'''\n        ndk {{\n            abiFilters.clear()\n            abiFilters += listOf("{abi}")\n        }}\n'''
     + text[insert_at:]
 )
 
-# Register the CMake project at the Android module level so AGP actually
-# builds and packages the selected native ABI into the APK.
-if 'externalNativeBuild {' not in text:\n    text = text.replace(\n        "    buildTypes {",\n        '''    externalNativeBuild {\n        cmake {\n            path = file("../../pocketai_template/app/src/main/cpp/CMakeLists.txt")\n        }\n    }\n\n    buildTypes {''',\n        1,\n    )
+# Register the CMake project at the Android module level. The workflow restores
+# this file into android/app/src/main/cpp before each native configuration.
+if 'externalNativeBuild {' not in text:
+    text = text.replace(
+        "    buildTypes {",
+        '''    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+
+    buildTypes {''',
+        1,
+    )
 
 # The CI APK is an installable test artifact. The generated Flutter scaffold
 # may leave release unsigned, so explicitly use the generated debug keystore
