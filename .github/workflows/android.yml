@@ -8,11 +8,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: pocketai-android-${{ github.ref }}
-  # Native ABIs are built explicitly with CMake and packaged via jniLibs.
-  cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
