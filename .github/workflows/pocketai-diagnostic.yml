@@ -83,10 +83,10 @@ jobs:
 
       - name: Restore PocketAI native files
         run: |
-          mkdir -p android/app/src/main/kotlin/com/pocketai/server
+          mkdir -p android/app/src/main/kotlin/com/pocketai/pocket_ai_server
           mkdir -p android/app/src/main/cpp
-          cp android/pocketai_template/app/src/main/kotlin/com/pocketai/server/MainActivity.kt android/app/src/main/kotlin/com/pocketai/server/MainActivity.kt
-          cp android/pocketai_template/app/src/main/kotlin/com/pocketai/server/NativeAi.kt android/app/src/main/kotlin/com/pocketai/server/NativeAi.kt
+          cp android/pocketai_template/app/src/main/kotlin/com/pocketai/server/MainActivity.kt android/app/src/main/kotlin/com/pocketai/pocket_ai_server/MainActivity.kt
+          cp android/pocketai_template/app/src/main/kotlin/com/pocketai/server/NativeAi.kt android/app/src/main/kotlin/com/pocketai/pocket_ai_server/NativeAi.kt
           cp android/pocketai_template/app/src/main/cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
           cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
 

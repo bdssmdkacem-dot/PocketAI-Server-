@@ -1,4 +1,4 @@
-package com.pocketai.server
+package com.pocketai.pocket_ai_server
 
 import android.app.ActivityManager
 import android.os.Build
