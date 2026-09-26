@@ -36,15 +36,15 @@ jobs:
       - name: Prepare Android NDK
         run: |
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
-          if [ -d "\$SDK_ROOT/ndk/27.3.13750724" ]; then
-            NDK_DIR="\$SDK_ROOT/ndk/27.3.13750724"
+          if [ -d "$SDK_ROOT/ndk/27.3.13750724" ]; then
+            NDK_DIR="$SDK_ROOT/ndk/27.3.13750724"
           else
             echo "Required NDK 27.3.13750724 was not found."
-            ls -la "\$SDK_ROOT/ndk" || true
+            ls -la "$SDK_ROOT/ndk" || true
             exit 1
           fi
-          echo "ANDROID_NDK=\$NDK_DIR" >> "\$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=\$NDK_DIR" >> "\$GITHUB_ENV"
+          echo "ANDROID_NDK=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
 
       - name: Fetch pinned llama.cpp
         run: bash scripts/fetch_llama_cpp.sh
@@ -113,10 +113,10 @@ jobs:
         run: |
           set -e
           for abi in armeabi-v7a arm64-v8a x86_64; do
-            echo "=== \$abi ==="
-            find "android/app/src/main/jniLibs/\$abi" -maxdepth 1 -type f -name '*.so' -print | sort
+            echo "=== $abi ==="
+            find "android/app/src/main/jniLibs/$abi" -maxdepth 1 -type f -name '*.so' -print | sort
             for lib in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
-              test -s "android/app/src/main/jniLibs/\$abi/\$lib"
+              test -s "android/app/src/main/jniLibs/$abi/$lib"
             done
           done
 
@@ -125,52 +125,52 @@ jobs:
           set -e
           flutter build apk --release
           APK="build/app/outputs/flutter-apk/app-release.apk"
-          test -s "\$APK"
-          cp "\$APK" build/app/outputs/flutter-apk/pocketai-universal.apk
+          test -s "$APK"
+          cp "$APK" build/app/outputs/flutter-apk/pocketai-universal.apk
 
       - name: Sign universal APK
         run: |
           set -e
           APK="build/app/outputs/flutter-apk/pocketai-universal.apk"
-          BT="\$(find "\$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
-          KEYSTORE="\$HOME/.android/debug.keystore"
-          mkdir -p "\$HOME/.android"
-          if [ ! -f "\$KEYSTORE" ]; then
-            keytool -genkeypair -v -keystore "\$KEYSTORE" -storepass android \
+          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
+          KEYSTORE="$HOME/.android/debug.keystore"
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$KEYSTORE" ]; then
+            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android \
               -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 \
               -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          "\$BT/zipalign" -f -P 4 4 "\$APK" "${APK%.apk}-aligned.apk"
-          mv "${APK%.apk}-aligned.apk" "\$APK"
-          "\$BT/apksigner" sign --ks "\$KEYSTORE" --ks-pass pass:android \
-            --key-pass pass:android --ks-key-alias AndroidDebugKey "\$APK"
-          "\$BT/apksigner" verify --verbose --print-certs "\$APK"
+          "$BT/zipalign" -f -P 4 4 "$APK" "${APK%.apk}-aligned.apk"
+          mv "${APK%.apk}-aligned.apk" "$APK"
+          "$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android \
+            --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+          "$BT/apksigner" verify --verbose --print-certs "$APK"
 
       - name: Validate universal APK
         run: |
           set -e
           APK="build/app/outputs/flutter-apk/pocketai-universal.apk"
-          BT="\$(find "\$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
+          BT="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -type d | sort -V | tail -1)"
 
           echo "=== APK ==="
-          ls -lh "\$APK"
-          sha256sum "\$APK"
-          unzip -t "\$APK"
+          ls -lh "$APK"
+          sha256sum "$APK"
+          unzip -t "$APK"
 
           echo "=== ABIs ==="
-          unzip -Z1 "\$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\\1#' | sort -u
+          unzip -Z1 "$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\\1#' | sort -u
 
           for abi in armeabi-v7a arm64-v8a x86_64; do
-            echo "=== Validate \$abi ==="
-            unzip -Z1 "\$APK" | grep -Fxq "lib/\$abi/libflutter.so"
-            unzip -Z1 "\$APK" | grep -Fxq "lib/\$abi/libapp.so"
+            echo "=== Validate $abi ==="
+            unzip -Z1 "$APK" | grep -Fxq "lib/$abi/libflutter.so"
+            unzip -Z1 "$APK" | grep -Fxq "lib/$abi/libapp.so"
             for lib in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
-              unzip -Z1 "\$APK" | grep -Fxq "lib/\$abi/\$lib"
+              unzip -Z1 "$APK" | grep -Fxq "lib/$abi/$lib"
             done
           done
 
-          "\$BT/zipalign" -c -P 4 -v 4 "\$APK"
-          "\$BT/apksigner" verify --verbose --print-certs "\$APK"
+          "$BT/zipalign" -c -P 4 -v 4 "$APK"
+          "$BT/apksigner" verify --verbose --print-certs "$APK"
 
       - name: Build ABI split APKs for matrix validation
         run: |
@@ -189,13 +189,13 @@ jobs:
             "x86_64:pocketai-x86_64.apk"; do
             abi="${pair%%:*}"
             apk="${pair##*:}"
-            path="build/app/outputs/flutter-apk/\$apk"
-            test -s "\$path"
-            unzip -t "\$path"
-            unzip -Z1 "\$path" | grep -Fxq "lib/\$abi/libflutter.so"
-            unzip -Z1 "\$path" | grep -Fxq "lib/\$abi/libapp.so"
+            path="build/app/outputs/flutter-apk/$apk"
+            test -s "$path"
+            unzip -t "$path"
+            unzip -Z1 "$path" | grep -Fxq "lib/$abi/libflutter.so"
+            unzip -Z1 "$path" | grep -Fxq "lib/$abi/libapp.so"
             for lib in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
-              unzip -Z1 "\$path" | grep -Fxq "lib/\$abi/\$lib"
+              unzip -Z1 "$path" | grep -Fxq "lib/$abi/$lib"
             done
           done
 
