@@ -16,6 +16,18 @@ CMAKE_FILE = ROOT / "android" / "app" / "src" / "main" / "cpp" / "CMakeLists.txt
 JNI_ROOT = ROOT / "android" / "app" / "src" / "main" / "jniLibs"
 
 ABIS = ("armeabi-v7a", "arm64-v8a", "x86_64")
+JNI_SYMBOLS = (
+    "Java_com_pocketai_pocket_1ai_1server_NativeAi_isReady",
+    "Java_com_pocketai_pocket_1ai_1server_NativeAi_status",
+    "Java_com_pocketai_pocket_1ai_1server_NativeAi_version",
+    "Java_com_pocketai_pocket_1ai_1server_NativeAi_runtimeCheck",
+    "Java_com_pocketai_pocket_1ai_1server_NativeAi_loadModel",
+    "Java_com_pocketai_pocket_1ai_1server_NativeAi_unloadModel",
+    "Java_com_pocketai_pocket_1ai_1server_NativeAi_isModelLoaded",
+    "Java_com_pocketai_pocket_1ai_1server_NativeAi_loadedModelName",
+    "Java_com_pocketai_pocket_1ai_1server_NativeAi_generate",
+)
+
 REQUIRED_LIBS = (
     "libpocket_ai.so",
     "libllama.so",
@@ -90,6 +102,14 @@ def main() -> None:
             print("PACKAGED", destination, flush=True)
 
         run("file", *[str(target_dir / name) for name in REQUIRED_LIBS])
+        symbols = subprocess.check_output(
+            ["readelf", "-Ws", str(target_dir / "libpocket_ai.so")],
+            text=True,
+        )
+        for symbol in JNI_SYMBOLS:
+            if symbol not in symbols:
+                raise SystemExit(f"{abi}: missing JNI export {symbol}")
+        print(f"{abi}: JNI exports OK", flush=True)
 
     print("=== Native ABI matrix ===", flush=True)
     for abi in ABIS:
