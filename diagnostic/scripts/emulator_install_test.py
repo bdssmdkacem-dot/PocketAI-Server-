@@ -169,7 +169,7 @@ with install_report.open("a", encoding="utf-8") as f:
                 + "\n",
                 encoding="utf-8",
             )
-            (DIAG / "emulator" / "system-health.txt").write_text(
+            (DIAG / "system-health.txt").write_text(
                 "=== POST-LAUNCH SYSTEM HEALTH ===\n"
                 f"LOGCAT_COMMAND_RC={post_launch_log_rc}\n"
                 "=== SYSTEM ANR EVIDENCE ===\n"
