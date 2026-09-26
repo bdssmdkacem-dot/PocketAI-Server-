@@ -29,14 +29,14 @@ jobs:
 
       - name: Prepare Android NDK
         run: |
-          SDK_ROOT="\${ANDROID_SDK_ROOT:-\${ANDROID_HOME}}"
-          if [ -d "$SDK_ROOT/ndk/27.3.13750724" ]; then
-            NDK_DIR="$SDK_ROOT/ndk/27.3.13750724"
-          else
-            echo "Required preinstalled NDK 27.3.13750724 was not found."
-            ls -la "$SDK_ROOT/ndk" || true
-            exit 1
+          SDK_ROOT="$ANDROID_SDK_ROOT"
+          NDK_DIR="$SDK_ROOT/ndk/27.3.13750724"
+          if [ ! -d "$NDK_DIR" ]; then
+            echo "NDK 27.3.13750724 not found; installing it with sdkmanager."
+            yes | sdkmanager --licenses >/dev/null || true
+            sdkmanager "ndk;27.3.13750724"
           fi
+          test -d "$NDK_DIR"
           echo "ANDROID_NDK=$NDK_DIR" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
           echo "Using NDK: $NDK_DIR"
