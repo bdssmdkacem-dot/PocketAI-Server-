@@ -131,6 +131,72 @@ with install_report.open("a", encoding="utf-8") as f:
         # The emulator is heavily loaded, so allow extra time for Flutter startup.
         time.sleep(10)
 
+        # Check Android system health before interpreting a missing PocketAI PID
+        # as an application failure. GitHub Actions x86_64 emulators can surface
+        # system ANRs while the APK itself is intact.
+        post_launch_log_rc, post_launch_log = run_capture(
+            ["adb", "logcat", "-d", "-v", "time", "-t", "1500"],
+            timeout=60,
+        )
+        system_anr_patterns = (
+            "ANR in com.android.systemui",
+            "ANR in com.android.phone",
+            "ANR in com.android.role",
+            "RoleControllerManager",
+            "System UI isn't responding",
+            "System UI is not responding",
+        )
+        system_anr_hits = [
+            line for line in post_launch_log.splitlines()
+            if any(pattern in line for pattern in system_anr_patterns)
+        ]
+
+        pid_rc_precheck, pid_output_precheck = run_capture(
+            ["adb", "shell", "pidof", PACKAGE],
+            timeout=30,
+        )
+
+        if system_anr_hits:
+            result = DIAG / "RESULT.txt"
+            result.write_text(
+                "DIAGNOSTIC_RESULT=EMULATOR_FAILURE\n"
+                "FAILURE_CLASS=SYSTEM_ANR\n"
+                f"PIDOF_RC={pid_rc_precheck}\n"
+                f"PIDOF_OUTPUT={pid_output_precheck.strip()!r}\n"
+                f"LOGCAT_COMMAND_RC={post_launch_log_rc}\n"
+                "SYSTEM_ANR_EVIDENCE=\n"
+                + "\n".join(system_anr_hits[-40:])
+                + "\n",
+                encoding="utf-8",
+            )
+            (DIAG / "emulator" / "system-health.txt").write_text(
+                "=== POST-LAUNCH SYSTEM HEALTH ===\n"
+                f"LOGCAT_COMMAND_RC={post_launch_log_rc}\n"
+                "=== SYSTEM ANR EVIDENCE ===\n"
+                + "\n".join(system_anr_hits[-200:])
+                + "\n",
+                encoding="utf-8",
+            )
+            launch_report.write_text(
+                "===== LAUNCH TEST =====\n"
+                f"PACKAGE={PACKAGE}\n"
+                "CLASSIFICATION=EMULATOR_FAILURE\n"
+                "REASON=SYSTEM_ANR\n"
+                f"PIDOF={pid_output_precheck.strip()!r}\n"
+                "HTTP_AND_INFERENCE=SKIPPED\n",
+                encoding="utf-8",
+            )
+            logcat_report.write_text(
+                "===== LOGCAT AFTER NATIVE x64 LAUNCH =====\n"
+                + post_launch_log
+                + f"\nLOGCAT_COMMAND_RC={post_launch_log_rc}\n",
+                encoding="utf-8",
+            )
+            print("DIAGNOSTIC_RESULT=EMULATOR_FAILURE")
+            print("FAILURE_CLASS=SYSTEM_ANR")
+            print("POCKETAI_RUNTIME_TEST=SKIPPED")
+            sys.exit(2)
+
         checks = [
             ("PIDOF", ["adb", "shell", "pidof", PACKAGE]),
             (
