@@ -57,7 +57,7 @@ jobs:
           cp android/pocketai_template/app/src/main/cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
           cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
 
-      - name: Enable Android externalNativeBuild
+      - name: Configure Android native packaging
         run: python3 scripts/configure_android_native.py
 
       - name: Get packages
@@ -124,10 +124,19 @@ jobs:
         run: |
           set -e
           python3 scripts/configure_android_native.py
-          test -f android/pocketai_template/app/src/main/cpp/CMakeLists.txt
-          test -f android/pocketai_template/app/src/main/cpp/ai_bridge.cpp
+          test -f android/app/src/main/cpp/CMakeLists.txt
+          test -f android/app/src/main/cpp/ai_bridge.cpp
           flutter clean
-          rm -rf android/.cxx android/app/.cxx build
+          rm -rf android/.cxx android/app/.cxx build android/app/src/main/jniLibs
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cmake -S android/app/src/main/cpp -B build/native-arm64-v8a -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native-arm64-v8a --target pocket_ai -j2
+          find build/native-arm64-v8a -type f -name '*.so' -exec cp {} android/app/src/main/jniLibs/arm64-v8a/ \;
+          ls -lh android/app/src/main/jniLibs/arm64-v8a
+          test -f android/app/src/main/jniLibs/arm64-v8a/libpocket_ai.so
+          test -f android/app/src/main/jniLibs/arm64-v8a/libllama.so
           flutter pub get
           flutter build apk --release --target-platform android-arm64
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-server-arm64.apk
@@ -172,18 +181,103 @@ jobs:
           python3 scripts/configure_android_native.py
           test -f android/app/src/main/cpp/CMakeLists.txt
           flutter clean
-          rm -rf android/.cxx android/app/.cxx build
-          mkdir -p android/app/src/main/cpp
-          cp android/pocketai_template/app/src/main/cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
-          cp android/pocketai_template/app/src/main/cpp/ai_bridge.cpp android/app/src/main/cpp/ai_bridge.cpp
-          test -f android/app/src/main/cpp/CMakeLists.txt
+          rm -rf android/.cxx android/app/.cxx build android/app/src/main/jniLibs
+          mkdir -p android/app/src/main/jniLibs/x86_64
+          cmake -S android/app/src/main/cpp -B build/native-x86_64 -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=x86_64 -DANDROID_PLATFORM=android-24 -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native-x86_64 --target pocket_ai -j2
+          find build/native-x86_64 -type f -name '*.so' -exec cp {} android/app/src/main/jniLibs/x86_64/ \;
+          ls -lh android/app/src/main/jniLibs/x86_64
+          test -f android/app/src/main/jniLibs/x86_64/libpocket_ai.so
+          test -f android/app/src/main/jniLibs/x86_64/libllama.so
           flutter pub get
           flutter build apk --release --target-platform android-x64
           cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/pocketai-server-x86_64.apk
           echo "=== Verify native x86_64 payload ==="
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep '^lib/' | sort
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep -q '^lib/x86_64/libpocket_ai\.so$'
-          unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep -q '^lib/x86_64/libllama\.so$'
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep -q '^lib/x86_64/libpocket_ai\.so
+
+      - name: Sign x86_64 APK
+        run: |
+          APK="build/app/outputs/flutter-apk/pocketai-server-x86_64.apk"
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          KEYSTORE="$HOME/.android/debug.keystore"
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$KEYSTORE" ]; then
+            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+      - name: Diagnose x86_64 APK compatibility
+        run: |
+          APK="build/app/outputs/flutter-apk/pocketai-server-x86_64.apk"
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          AAPT2="$(dirname "$APKSIGNER")/aapt2"
+          ZIPALIGN="$(dirname "$APKSIGNER")/zipalign"
+          echo "=== APK FILE ==="
+          ls -lh "$APK"
+          sha256sum "$APK"
+          echo "=== AAPT2 BADGING ==="
+          "$AAPT2" dump badging "$APK"
+          echo "=== APK NATIVE ABIS ==="
+          unzip -Z1 "$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\1#' | sort -u
+          echo "=== ZIPALIGN ==="
+          "$ZIPALIGN" -c -P 4 -v 4 "$APK"
+          echo "=== APK SIGNATURE ==="
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketai-server-release
+          path: |
+            build/app/outputs/flutter-apk/pocketai-server-arm64.apk
+            build/app/outputs/flutter-apk/pocketai-server-x86_64.apk
+            build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk
+
+          unzip -Z1 build/app/outputs/flutter-apk/pocketai-server-x86_64.apk | grep -q '^lib/x86_64/libllama\.so
+
+      - name: Sign x86_64 APK
+        run: |
+          APK="build/app/outputs/flutter-apk/pocketai-server-x86_64.apk"
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          KEYSTORE="$HOME/.android/debug.keystore"
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$KEYSTORE" ]; then
+            keytool -genkeypair -v -keystore "$KEYSTORE" -storepass android -alias AndroidDebugKey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          "$APKSIGNER" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android --ks-key-alias AndroidDebugKey "$APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+      - name: Diagnose x86_64 APK compatibility
+        run: |
+          APK="build/app/outputs/flutter-apk/pocketai-server-x86_64.apk"
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          AAPT2="$(dirname "$APKSIGNER")/aapt2"
+          ZIPALIGN="$(dirname "$APKSIGNER")/zipalign"
+          echo "=== APK FILE ==="
+          ls -lh "$APK"
+          sha256sum "$APK"
+          echo "=== AAPT2 BADGING ==="
+          "$AAPT2" dump badging "$APK"
+          echo "=== APK NATIVE ABIS ==="
+          unzip -Z1 "$APK" | grep '^lib/' | sed -E 's#^lib/([^/]+)/.*#\1#' | sort -u
+          echo "=== ZIPALIGN ==="
+          "$ZIPALIGN" -c -P 4 -v 4 "$APK"
+          echo "=== APK SIGNATURE ==="
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocketai-server-release
+          path: |
+            build/app/outputs/flutter-apk/pocketai-server-arm64.apk
+            build/app/outputs/flutter-apk/pocketai-server-x86_64.apk
+            build/app/outputs/flutter-apk/pocketai-flutter-smoke.apk
+
 
       - name: Sign x86_64 APK
         run: |
