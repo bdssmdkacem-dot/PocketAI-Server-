@@ -138,11 +138,14 @@ with install_report.open("a", encoding="utf-8") as f:
             ["adb", "logcat", "-d", "-v", "time", "-t", "1500"],
             timeout=60,
         )
+        # Only classify a system failure when logcat contains a concrete ANR
+        # or an explicit System UI unresponsive message. RoleControllerManager
+        # messages by themselves are normal Android framework noise and can
+        # occur without an actual system ANR, so they must not fail the test.
         system_anr_patterns = (
             "ANR in com.android.systemui",
             "ANR in com.android.phone",
             "ANR in com.android.role",
-            "RoleControllerManager",
             "System UI isn't responding",
             "System UI is not responding",
         )
