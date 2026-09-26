@@ -196,13 +196,13 @@ jobs:
           test -f android/app/src/main/jniLibs/x86_64/libpocket_ai.so
           echo "=== Build native x64 Flutter APK with jniLibs packaging ==="
           flutter build apk --release --target-platform android-x64
+          FLUTTER_APK="build/app/outputs/flutter-apk/app-release.apk"
+          test -f "$FLUTTER_APK"
           echo "=== Verify Flutter x64 engine artifacts before native injection ==="
           unzip -Z1 "$FLUTTER_APK" | grep -qx "lib/x86_64/libflutter.so"
           unzip -Z1 "$FLUTTER_APK" | grep -qx "lib/x86_64/libapp.so"
           echo "Flutter x64 engine artifacts: OK"
           echo "=== Inject native x64 libraries into final Flutter APK ==="
-          FLUTTER_APK="build/app/outputs/flutter-apk/app-release.apk"
-          test -f "$FLUTTER_APK"
           INJECT_DIR="/tmp/pocketai-inject-x64"
           rm -rf "$INJECT_DIR"
           mkdir -p "$INJECT_DIR/lib/x86_64"
