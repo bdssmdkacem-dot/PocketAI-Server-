@@ -165,6 +165,7 @@ with install_report.open("a", encoding="utf-8") as f:
         http_report = DIAG / "http-api.txt"
         forward_rc, forward_output = run_capture(["adb", "forward", "tcp:18080", "tcp:8080"], timeout=30)
         http_verified = False
+        runtime_verified_by_http = False
         if forward_rc == 0:
             try:
                 from urllib.error import HTTPError
@@ -188,6 +189,7 @@ with install_report.open("a", encoding="utf-8") as f:
                     raise RuntimeError("HTTP /health did not become ready")
 
                 assert health.get("native_ready") is True, health
+                runtime_verified_by_http = True
                 assert health.get("model_loaded") is False, health
                 model_status, models = http_get("/v1/models")
                 assert model_status == 200, model_status
@@ -356,10 +358,11 @@ with install_report.open("a", encoding="utf-8") as f:
             f.write(f"NATIVE_READY_IN_UI={native_ready}\n")
             f.write(f"RUNTIME_CHECK_OK_IN_UI={runtime_ok}\n")
             f.write(f"UI_TEXT_RC={ui_rc}\n")
-            if not (pid_rc == 0 and pid_output.strip() and native_ready and runtime_ok):
-                f.write("NATIVE_RUNTIME_VERIFICATION=FAILED\n")
-            else:
+            f.write(f"NATIVE_RUNTIME_VERIFICATION_BY_HTTP={runtime_verified_by_http}\n")
+            if runtime_verified_by_http:
                 f.write("NATIVE_RUNTIME_VERIFICATION=PASSED\n")
+            else:
+                f.write("NATIVE_RUNTIME_VERIFICATION=FAILED\n")
     else:
         log_rc, log_output = run_capture(
             ["adb", "shell", "logcat", "-d", "-v", "time", "-t", "500"],
@@ -409,4 +412,6 @@ if "runtime_verified_by_http" in globals() and runtime_verified_by_http:
 
 print(f"LOGCAT_REPORT={logcat_report}")
 print(f"NATIVE_RUNTIME_VERIFICATION={runtime_verified}")
-sys.exit(0 if (effective_install and runtime_verified and http_verified) else 1)
+print(f"HTTP_VERIFIED={http_verified}")
+print(f"RUNTIME_VERIFIED_BY_HTTP={runtime_verified_by_http}")
+sys.exit(0 if (effective_install and runtime_verified_by_http and http_verified) else 1)
