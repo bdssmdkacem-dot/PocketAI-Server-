@@ -51,6 +51,22 @@ text = (
     + text[insert_at:]
 )
 
+# Register the CMake project at the Android module level so AGP actually
+# builds and packages the selected native ABI into the APK.
+if 'path = file("src/main/cpp/CMakeLists.txt")' not in text:
+    text = text.replace(
+        "    buildTypes {",
+        '''    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            targets += listOf("pocket_ai")
+        }
+    }
+
+    buildTypes {''',
+        1,
+    )
+
 # The CI APK is an installable test artifact. The generated Flutter scaffold
 # may leave release unsigned, so explicitly use the generated debug keystore
 # for this non-production CI build. Production signing will be added separately.
