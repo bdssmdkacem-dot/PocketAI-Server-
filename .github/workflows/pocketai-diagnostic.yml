@@ -196,6 +196,10 @@ jobs:
           test -f android/app/src/main/jniLibs/x86_64/libpocket_ai.so
           echo "=== Build native x64 Flutter APK with jniLibs packaging ==="
           flutter build apk --release --target-platform android-x64
+          echo "=== Verify Flutter x64 engine artifacts before native injection ==="
+          unzip -Z1 "$FLUTTER_APK" | grep -qx "lib/x86_64/libflutter.so"
+          unzip -Z1 "$FLUTTER_APK" | grep -qx "lib/x86_64/libapp.so"
+          echo "Flutter x64 engine artifacts: OK"
           echo "=== Inject native x64 libraries into final Flutter APK ==="
           FLUTTER_APK="build/app/outputs/flutter-apk/app-release.apk"
           test -f "$FLUTTER_APK"
@@ -213,9 +217,9 @@ jobs:
           cp "$INJECT_DIR/pocketai-native-x64.apk" build/app/outputs/flutter-apk/pocketai-native-x64.apk
           mkdir -p /tmp/pocketai-final-apks
           cp build/app/outputs/flutter-apk/pocketai-native-x64.apk /tmp/pocketai-final-apks/pocketai-native-x64.apk
-          echo "=== Verify injected native x64 libraries ==="
+          echo "=== Verify injected native x64 libraries and Flutter engine ==="
           unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep '^lib/' | sort
-          for LIB in libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
+          for LIB in libflutter.so libapp.so libpocket_ai.so libllama.so libggml.so libggml-base.so libggml-cpu.so; do
             unzip -Z1 build/app/outputs/flutter-apk/pocketai-native-x64.apk | grep -qx "lib/x86_64/$LIB"
           done
 
