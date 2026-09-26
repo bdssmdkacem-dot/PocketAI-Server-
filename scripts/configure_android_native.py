@@ -7,6 +7,17 @@ gradle_properties = Path("android/gradle.properties")
 
 text = app_gradle.read_text()
 
+# The smoke build intentionally removes the native cpp tree. Restore the
+# CMake entrypoint before every native configuration so Gradle never points
+# at a missing project file.
+cpp_dir = Path("android/app/src/main/cpp")
+cpp_dir.mkdir(parents=True, exist_ok=True)
+template_cmake = Path("android/pocketai_template/app/src/main/cpp/CMakeLists.txt")
+if template_cmake.exists():
+    (cpp_dir / "CMakeLists.txt").write_text(template_cmake.read_text())
+else:
+    raise SystemExit("PocketAI CMake template is missing")
+
 ndk_dir = Path(os.environ["ANDROID_NDK"])
 abi = os.environ.get("POCKETAI_ABI", "arm64-v8a").strip()
 if abi not in {"arm64-v8a", "x86_64"}:
