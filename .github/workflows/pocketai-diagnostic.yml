@@ -372,6 +372,8 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 1200
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect
+          env:
+            TEST_MODEL_PATH: ${{ github.workspace }}/diagnostic/model/stories15M-q4_0.gguf
           script: python3 diagnostic/scripts/emulator_install_test.py
 
       - name: Diagnostic summary
