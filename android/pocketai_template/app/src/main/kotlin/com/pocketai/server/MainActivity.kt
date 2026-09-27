@@ -59,13 +59,17 @@ class MainActivity : FlutterActivity() {
         "device" to deviceCapabilities(),
     )
 
-    private fun serverStatus(): Map<String, Any> = mapOf(
-        "running" to (server?.isRunning() == true),
-        "host" to "127.0.0.1",
-        "port" to (server?.port ?: 8080),
-        "modelLoaded" to nativeAi.isModelLoaded(),
-        "model" to nativeAi.loadedModelName(),
-    )
+    private fun serverStatus(): Map<String, Any> {
+        val ai = if (nativeInitError == null) nativeAi else null
+        return mapOf(
+            "running" to (server?.isRunning() == true),
+            "host" to "127.0.0.1",
+            "port" to (server?.port ?: 8080),
+            "modelLoaded" to (ai?.isModelLoaded() ?: false),
+            "model" to (ai?.loadedModelName().orEmpty()),
+            "error" to (nativeInitError ?: serverInitError ?: ""),
+        )
+    }
 
     private fun deviceCapabilities(): Map<String, Any> {
         val memoryInfo = ActivityManager.MemoryInfo()
