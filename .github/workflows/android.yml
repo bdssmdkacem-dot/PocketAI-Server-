@@ -28,6 +28,35 @@ jobs:
             flutter create . --platforms=android --org com.pocketai --project-name pocket_ai_server
           fi
 
+      - name: Enable Android local socket networking
+        run: |
+          set -e
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          test -f "$MANIFEST"
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          text = p.read_text()
+          root = ET.fromstring(text)
+          android_ns = "http://schemas.android.com/apk/res/android"
+          ET.register_namespace("android", android_ns)
+          permission = "android.permission.INTERNET"
+          existing = {
+              elem.get(f"{{{android_ns}}}name")
+              for elem in root.findall("uses-permission")
+          }
+          if permission not in existing:
+              node = ET.Element("uses-permission")
+              node.set(f"{{{android_ns}}}name", permission)
+              root.insert(0, node)
+              p.write_text(ET.tostring(root, encoding="unicode") + "\n")
+          PY
+          grep -q 'android.permission.INTERNET' "$MANIFEST"
+          echo "Verified Android INTERNET permission for the local loopback server."
+          echo "Manifest: $MANIFEST"
+
       - name: Align Android package with PocketAI native entry point
         run: |
           set -e
