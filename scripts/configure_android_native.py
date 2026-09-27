@@ -82,6 +82,29 @@ def strip_external_native_build(source):
 
 text = strip_external_native_build(text)
 
+# The CI APK is an installable test artifact. The generated Flutter scaffold
+# may leave release unsigned, so explicitly use the generated debug keystore
+# for this non-production CI build. Production signing will be added separately.
+release = re.search(r"(?s)buildTypes\s*\{.*?^\s*release\s*\{", text, re.MULTILINE)
+if not release:
+    raise SystemExit("release buildType block was not found in android/app/build.gradle.kts")
+
+release_body_start = release.end()
+next_block = text.find("\n    }", release_body_start)
+if next_block == -1:
+    raise SystemExit("release buildType closing block was not found")
+
+release_body = text[release_body_start:next_block]
+if "signingConfig" not in release_body:
+    text = (
+        text[:release_body_start]
+        + '''
+        signingConfig = signingConfigs.getByName("debug")
+'''
+        + text[release_body_start:]
+    )
+
+
 # Explicitly register the JNI library directory so the prebuilt native runtime
 # is unambiguously included in the Android main source set.
 if 'jniLibs.setSrcDirs(listOf("src/main/jniLibs"))' not in text:
@@ -118,3 +141,4 @@ print("Configured Android native build:")
 print(f"  ndkVersion = {ndk_version}")
 print(f"  abiFilters = {abi}")
 print("  android.injected.build.abi = disabled")
+print("  release signing = debug keystore (CI test artifact)")
