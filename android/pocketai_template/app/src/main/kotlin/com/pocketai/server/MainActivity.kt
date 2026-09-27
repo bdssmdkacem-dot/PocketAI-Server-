@@ -32,11 +32,9 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "status" -> result.success(statusMap())
-                    "startServer" -> try {
-                        if (server == null) server = LocalAiServer(filesDir, nativeAi).also { it.start() }
+                    "startServer" -> {
+                        ensureServer()
                         result.success(serverStatus())
-                    } catch (e: Exception) {
-                        result.error("SERVER_START_FAILED", e.message, null)
                     }
                     "stopServer" -> {
                         server?.stop()
@@ -50,16 +48,25 @@ class MainActivity : FlutterActivity() {
 
         // Start the local OpenAI-compatible API as soon as the Android activity
         // is initialized. The server must not depend on a Flutter UI action.
-        if (server == null && nativeInitError == null) {
-            try {
-                server = LocalAiServer(filesDir, nativeAi).also { it.start() }
-            } catch (t: Throwable) {
-                serverInitError = "${t.javaClass.simpleName}: ${t.message ?: "server initialization failed"}"
-            }
+        ensureServer()
+    }
+
+    private fun ensureServer() {
+        if (nativeInitError != null || server?.isRunning() == true) return
+        try {
+            server?.stop()
+        } catch (_: Throwable) {}
+        server = null
+        try {
+            server = LocalAiServer(filesDir, nativeAi).also { it.start() }
+            serverInitError = null
+        } catch (t: Throwable) {
+            serverInitError = "${t.javaClass.simpleName}: ${t.message ?: "server initialization failed"}"
         }
     }
 
     private fun statusMap(): Map<String, Any> {
+        ensureServer()
         val ai = if (nativeInitError == null) nativeAi else null
         return mapOf(
             "ready" to (ai?.isReady() ?: false),
