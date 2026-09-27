@@ -75,7 +75,7 @@ push_rc, push_output = run_capture(
 )
 if push_rc == 0:
     rc, output = run_capture(
-        ["adb", "shell", "pm", "install", "-r", "-t", remote_apk],
+        ["adb", "shell", "pm", "install", "-r", remote_apk],
         timeout=900,
     )
     output = "=== ADB PUSH ===\n" + push_output + "\n=== PM INSTALL ===\n" + output
@@ -96,7 +96,7 @@ effective_install = rc == 0 or installed
 with install_report.open("a", encoding="utf-8") as f:
     f.write("===== INSTALL COMMAND =====\n")
     f.write("adb push " + str(apk) + " /data/local/tmp/pocketai-native-x64.apk\\n")
-    f.write("adb shell pm install -r -t /data/local/tmp/pocketai-native-x64.apk\\n")
+    f.write("adb shell pm install -r /data/local/tmp/pocketai-native-x64.apk\\n")
     f.write("===== INSTALL OUTPUT =====\n")
     f.write(output)
     f.write(f"INSTALL_COMMAND_RC={rc}\n")
@@ -401,6 +401,7 @@ try:
     print("\n".join(report_tail))
 except Exception as exc:
     print(f"REPORT_READ_ERROR={exc!r}")
+print("INSTALL_POLICY=NO_TEST_ONLY_FLAG")
 print(f"FLUTTER_X64_INSTALL_RC={rc}")
 print(f"INSTALL_VERIFIED={effective_install}")
 print(f"INSTALL_REPORT={install_report}")
