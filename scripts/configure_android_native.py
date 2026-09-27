@@ -3,7 +3,6 @@ import re
 from pathlib import Path
 
 app_gradle = Path("android/app/build.gradle.kts")
-gradle_properties = Path("android/gradle.properties")
 
 text = app_gradle.read_text()
 
@@ -137,20 +136,9 @@ if 'useLegacyPackaging = false' not in text:
 
 app_gradle.write_text(text)
 
-# Keep the selected ABI available to the diagnostic Gradle environment.
-properties = gradle_properties.read_text() if gradle_properties.exists() else ""
-properties = re.sub(
-    r"(?m)^\s*android\.injected\.build\.abi\s*=.*$",
-    "",
-    properties,
-)
-if properties and not properties.endswith("\n"):
-    properties += "\n"
-properties += f"android.injected.build.abi={abi}\n"
-gradle_properties.write_text(properties)
 
 print("Configured Android native build:")
 print(f"  ndkVersion = {ndk_version}")
 print(f"  abiFilters = {abi}")
-print(f"  android.injected.build.abi = {abi}")
+print("  android.injected.build.abi = disabled")
 print("  release signing = debug keystore (CI test artifact)")
