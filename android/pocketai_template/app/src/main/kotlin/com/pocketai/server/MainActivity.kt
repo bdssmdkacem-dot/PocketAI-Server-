@@ -49,15 +49,22 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun statusMap(): Map<String, Any> = mapOf(
-        "ready" to nativeAi.isReady(),
-        "status" to nativeAi.status(),
-        "version" to nativeAi.version(),
-        "runtime" to nativeAi.runtimeCheck(),
-        "modelLoaded" to nativeAi.isModelLoaded(),
-        "model" to nativeAi.loadedModelName(),
-        "device" to deviceCapabilities(),
-    )
+    private fun statusMap(): Map<String, Any> {
+        val ai = if (nativeInitError == null) nativeAi else null
+        return mapOf(
+            "ready" to (ai?.isReady() ?: false),
+            "status" to (nativeInitError ?: ai?.status().orEmpty()),
+            "version" to (if (ai == null) "Unavailable" else ai.version()),
+            "runtime" to (nativeInitError ?: ai?.runtimeCheck().orEmpty()),
+            "modelLoaded" to (ai?.isModelLoaded() ?: false),
+            "model" to (ai?.loadedModelName().orEmpty()),
+            "device" to deviceCapabilities(),
+            "serverRunning" to (server?.isRunning() == true),
+            "serverHost" to "127.0.0.1",
+            "serverPort" to 8080,
+            "serverError" to (serverInitError ?: ""),
+        )
+    }
 
     private fun serverStatus(): Map<String, Any> {
         val ai = if (nativeInitError == null) nativeAi else null
