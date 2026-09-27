@@ -6,40 +6,6 @@ void main() => runApp(const PocketAiApp());
 class PocketAiApp extends StatelessWidget {
   const PocketAiApp({super.key});
 
-  Future<void> _startServer() async {
-    if (_serverActionBusy) return;
-    setState(() {
-      _serverActionBusy = true;
-      _serverError = '';
-    });
-    try {
-      final result = await _native.invokeMethod<Map<dynamic, dynamic>>('startServer');
-      if (!mounted) return;
-      setState(() {
-        _serverRunning = result?['running'] == true;
-        _serverAddress = '${result?['host'] ?? '127.0.0.1'}:${result?['port'] ?? 8080}';
-        _serverError = result?['error']?.toString() ?? '';
-      });
-      await _checkNativeEngine();
-    } on PlatformException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _serverError = error.message ?? error.code;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _serverError = error.toString();
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _serverActionBusy = false;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -78,6 +44,44 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     _checkNativeEngine();
+  }
+
+  Future<void> _startServer() async {
+    if (_serverActionBusy) return;
+
+    setState(() {
+      _serverActionBusy = true;
+      _serverError = '';
+    });
+
+    try {
+      final result = await _native.invokeMethod<Map<dynamic, dynamic>>('startServer');
+      if (!mounted) return;
+
+      setState(() {
+        _serverRunning = result?['running'] == true;
+        _serverAddress = '${result?['host'] ?? '127.0.0.1'}:${result?['port'] ?? 8080}';
+        _serverError = result?['error']?.toString() ?? '';
+      });
+
+      await _checkNativeEngine();
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _serverError = error.message ?? error.code;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _serverError = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _serverActionBusy = false;
+        });
+      }
+    }
   }
 
   Future<void> _checkNativeEngine() async {
@@ -129,7 +133,10 @@ class _DashboardPageState extends State<DashboardPage> {
                 children: [
                   const Text('LOCAL AI SERVER'),
                   const SizedBox(height: 12),
-                  Text(_status == 'llama.cpp-linked' ? 'Native Ready' : _status, style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
+                  Text(
+                    _status == 'llama.cpp-linked' ? 'Native Ready' : _status,
+                    style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 8),
                   Text(_runtime),
                   const SizedBox(height: 8),
@@ -158,14 +165,20 @@ class _DashboardPageState extends State<DashboardPage> {
             icon: _serverActionBusy
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 : Icon(_serverRunning ? Icons.refresh : Icons.play_arrow),
-            label: Text(_serverActionBusy
-                ? 'Starting server…'
-                : (_serverRunning ? 'Restart / verify server' : 'Start / retry server')),
+            label: Text(
+              _serverActionBusy
+                  ? 'Starting server…'
+                  : (_serverRunning ? 'Restart / verify server' : 'Start / retry server'),
+            ),
           ),
           InfoTile(title: 'API', value: 'http://$_serverAddress/v1'),
           const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
           const SizedBox(height: 8),
-          FilledButton.icon(onPressed: _checkNativeEngine, icon: const Icon(Icons.refresh), label: const Text('Refresh device & native status')),
+          FilledButton.icon(
+            onPressed: _checkNativeEngine,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Refresh device & native status'),
+          ),
         ],
       ),
     );
@@ -178,5 +191,7 @@ class InfoTile extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => Card(child: ListTile(title: Text(title), subtitle: Text(value)));
+  Widget build(BuildContext context) => Card(
+        child: ListTile(title: Text(title), subtitle: Text(value)),
+      );
 }
