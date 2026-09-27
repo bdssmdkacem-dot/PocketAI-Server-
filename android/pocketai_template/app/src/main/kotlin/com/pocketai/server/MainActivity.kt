@@ -18,10 +18,16 @@ class MainActivity : FlutterActivity() {
     private val channelName = "pocketai/native"
     private lateinit var nativeAi: NativeAi
     private var server: LocalAiServer? = null
+    private var nativeInitError: String? = null
+    private var serverInitError: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        nativeAi = NativeAi()
+        try {
+            nativeAi = NativeAi()
+        } catch (t: Throwable) {
+            nativeInitError = "${t.javaClass.simpleName}: ${t.message ?: "native library initialization failed"}"
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -44,8 +50,12 @@ class MainActivity : FlutterActivity() {
 
         // Start the local OpenAI-compatible API as soon as the Android activity
         // is initialized. The server must not depend on a Flutter UI action.
-        if (server == null) {
-            server = LocalAiServer(filesDir, nativeAi).also { it.start() }
+        if (server == null && nativeInitError == null) {
+            try {
+                server = LocalAiServer(filesDir, nativeAi).also { it.start() }
+            } catch (t: Throwable) {
+                serverInitError = "${t.javaClass.simpleName}: ${t.message ?: "server initialization failed"}"
+            }
         }
     }
 
@@ -97,7 +107,9 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         server?.stop()
         server = null
-        nativeAi.unloadModel()
+        if (nativeInitError == null) {
+            try { nativeAi.unloadModel() } catch (_: Throwable) {}
+        }
         super.onDestroy()
     }
 }
