@@ -9,9 +9,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
+import java.net.BindException
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
@@ -133,7 +136,50 @@ private class LocalAiServer(
     fun start() {
         if (running) return
         java.io.File(filesDir, "models").mkdirs()
-        socket = ServerSocket(port, 32, java.net.InetAddress.getByName("127.0.0.1"))
+
+        val loopback = InetAddress.getLoopbackAddress()
+        val address = InetSocketAddress(loopback, port)
+
+        // Preflight: distinguish an already-used port from a bind permission/policy
+        // failure before starting the accept loop. Never expose the server externally.
+        try {
+            Socket().use { probe ->
+                probe.connect(address, 150)
+                throw IllegalStateException("local port $port is already in use")
+            }
+        } catch (e: IllegalStateException) {
+            throw e
+        } catch (_: java.net.ConnectException) {
+            // Expected when nothing is listening yet.
+        } catch (e: Throwable) {
+            throw IllegalStateException(
+                "cannot probe local server port $port on 127.0.0.1: ${e.javaClass.simpleName}: ${e.message ?: "connection probe failed"}",
+                e
+            )
+        }
+
+        try {
+            val boundSocket = ServerSocket()
+            boundSocket.reuseAddress = true
+            boundSocket.bind(address, 32)
+            socket = boundSocket
+        } catch (e: BindException) {
+            throw IllegalStateException(
+                "cannot bind local server to 127.0.0.1:$port: BindException: ${e.message ?: "bind rejected"}",
+                e
+            )
+        } catch (e: SecurityException) {
+            throw IllegalStateException(
+                "cannot bind local server to 127.0.0.1:$port: SecurityException: ${e.message ?: "operation not permitted"}",
+                e
+            )
+        } catch (e: SocketException) {
+            throw IllegalStateException(
+                "cannot bind local server to 127.0.0.1:$port: SocketException: ${e.message ?: "socket operation failed"}",
+                e
+            )
+        }
+
         running = true
         executor.execute {
             while (running) {
