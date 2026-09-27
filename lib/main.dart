@@ -6,6 +6,40 @@ void main() => runApp(const PocketAiApp());
 class PocketAiApp extends StatelessWidget {
   const PocketAiApp({super.key});
 
+  Future<void> _startServer() async {
+    if (_serverActionBusy) return;
+    setState(() {
+      _serverActionBusy = true;
+      _serverError = '';
+    });
+    try {
+      final result = await _native.invokeMethod<Map<dynamic, dynamic>>('startServer');
+      if (!mounted) return;
+      setState(() {
+        _serverRunning = result?['running'] == true;
+        _serverAddress = '${result?['host'] ?? '127.0.0.1'}:${result?['port'] ?? 8080}';
+        _serverError = result?['error']?.toString() ?? '';
+      });
+      await _checkNativeEngine();
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _serverError = error.message ?? error.code;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _serverError = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _serverActionBusy = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -37,6 +71,8 @@ class _DashboardPageState extends State<DashboardPage> {
   String _device = '—';
   bool _serverRunning = false;
   String _serverAddress = '127.0.0.1:8080';
+  String _serverError = '';
+  bool _serverActionBusy = false;
 
   @override
   void initState() {
@@ -59,6 +95,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _device = '${device?['manufacturer'] ?? ''} ${device?['model'] ?? ''} • Android API ${device?['androidApi'] ?? '?'} • ABI $abis • RAM $ramGb';
         _serverRunning = result?['serverRunning'] == true;
         _serverAddress = '${result?['serverHost'] ?? '127.0.0.1'}:${result?['serverPort'] ?? 8080}';
+        _serverError = result?['serverError']?.toString() ?? '';
       });
     } on PlatformException catch (error) {
       if (!mounted) return;
@@ -107,6 +144,24 @@ class _DashboardPageState extends State<DashboardPage> {
           InfoTile(title: 'Version', value: _version),
           const InfoTile(title: 'Model', value: 'No model loaded'),
           InfoTile(title: 'Server', value: _serverRunning ? 'Running • $_serverAddress' : 'Stopped'),
+          if (_serverError.isNotEmpty)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.error_outline),
+                title: const Text('Server startup error'),
+                subtitle: Text(_serverError),
+              ),
+            ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _serverActionBusy ? null : _startServer,
+            icon: _serverActionBusy
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : Icon(_serverRunning ? Icons.refresh : Icons.play_arrow),
+            label: Text(_serverActionBusy
+                ? 'Starting server…'
+                : (_serverRunning ? 'Restart / verify server' : 'Start / retry server')),
+          ),
           InfoTile(title: 'API', value: 'http://$_serverAddress/v1'),
           const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
           const SizedBox(height: 8),
