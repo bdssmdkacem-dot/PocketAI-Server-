@@ -28,6 +28,24 @@ jobs:
             flutter create . --platforms=android --org com.pocketai --project-name pocket_ai_server
           fi
 
+      - name: Align Android package with PocketAI native entry point
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace('namespace = "com.pocketai.pocket_ai_server"', 'namespace = "com.pocketai.server"')
+          s = s.replace('applicationId = "com.pocketai.pocket_ai_server"', 'applicationId = "com.pocketai.server"')
+          if 'namespace = "com.pocketai.server"' not in s:
+              raise SystemExit("Failed to set Android namespace to com.pocketai.server")
+          if 'applicationId = "com.pocketai.server"' not in s:
+              raise SystemExit("Failed to set Android applicationId to com.pocketai.server")
+          p.write_text(s)
+          PY
+          rm -f android/app/src/main/kotlin/com/pocketai/pocket_ai_server/MainActivity.kt
+          rm -f android/app/src/main/kotlin/com/pocketai/pocket_ai_server/MainActivity.java
+
       - name: Prepare Android NDK
         run: |
           SDK_ROOT="$ANDROID_SDK_ROOT"
