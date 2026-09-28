@@ -46,6 +46,8 @@ class _DashboardPageState extends State<DashboardPage> {
   String _modelsCheck = 'Not checked';
   String _modelName = 'No model loaded';
   bool _modelActionBusy = false;
+  String _chatCheck = 'Not tested';
+  bool _chatBusy = false;
 
   @override
   void initState() {
@@ -186,6 +188,49 @@ class _DashboardPageState extends State<DashboardPage> {
       if (mounted) setState(() { _modelActionBusy = false; });
     }
   }
+  Future<void> _testChat() async {
+    if (_chatBusy || !_serverRunning) return;
+    setState(() => _chatBusy = true);
+    final stopwatch = Stopwatch()..start();
+    final client = HttpClient();
+    try {
+      client.connectionTimeout = const Duration(seconds: 3);
+      final request = await client.postUrl(
+        Uri.parse('http://127.0.0.1:8080/v1/chat/completions'),
+      );
+      final payload = jsonEncode({
+        'messages': [
+          {'role': 'user', 'content': 'Hello, who are you?'},
+        ],
+        'max_tokens': 64,
+        'temperature': 0.7,
+      });
+      request.headers.contentType = ContentType.json;
+      request.contentLength = utf8.encode(payload).length;
+      request.write(payload);
+      final response = await request.close().timeout(const Duration(minutes: 5));
+      final body = await response.transform(utf8.decoder).join();
+      stopwatch.stop();
+      if (!mounted) return;
+      setState(() {
+        _chatCheck =
+            'HTTP ${response.statusCode} in ${stopwatch.elapsedMilliseconds} ms: $body';
+      });
+    } catch (error) {
+      stopwatch.stop();
+      if (!mounted) return;
+      setState(() {
+        _chatCheck =
+            'Chat test failed after ${stopwatch.elapsedMilliseconds} ms: $error';
+      });
+    } finally {
+      client.close(force: true);
+      if (mounted) {
+        setState(() => _chatBusy = false);
+      }
+    }
+  }
+
   Future<void> _checkNativeEngine() async {
     try {
       final result = await _native.invokeMethod<Map<dynamic, dynamic>>('status');
@@ -291,6 +336,20 @@ class _DashboardPageState extends State<DashboardPage> {
             onPressed: _serverRunning ? _checkModels : null,
             icon: const Icon(Icons.view_list_outlined),
             label: const Text('Test /v1/models'),
+          ),
+          InfoTile(title: 'Chat completion', value: _chatCheck),
+          FilledButton.icon(
+            onPressed: _serverRunning && !_chatBusy ? _testChat : null,
+            icon: _chatBusy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chat_outlined),
+            label: Text(_chatBusy
+                ? 'Running inference…'
+                : 'Test /v1/chat/completions'),
           ),
           const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
           const SizedBox(height: 8),
