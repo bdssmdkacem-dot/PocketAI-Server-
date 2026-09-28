@@ -9,8 +9,8 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
@@ -273,28 +273,29 @@ private class LocalAiServer(
     private fun handle(client: Socket) {
         client.use { c ->
             c.soTimeout = 120_000
-            val reader = BufferedReader(InputStreamReader(c.getInputStream(), Charsets.UTF_8))
-            val requestLine = reader.readLine() ?: return
+            val input = BufferedInputStream(c.getInputStream())
+            val requestLine = readHttpLine(input) ?: return
             val parts = requestLine.split(" ")
             if (parts.size < 2) return
             val method = parts[0]
             val path = parts[1]
             var contentLength = 0
             while (true) {
-                val line = reader.readLine() ?: return
+                val line = readHttpLine(input) ?: return
                 if (line.isEmpty()) break
                 if (line.startsWith("Content-Length:", true)) {
                     contentLength = line.substringAfter(":").trim().toIntOrNull() ?: 0
                 }
             }
-            val bodyChars = CharArray(contentLength)
+            if (contentLength < 0 || contentLength > 10 * 1024 * 1024) return
+            val bodyBytes = ByteArray(contentLength)
             var read = 0
             while (read < contentLength) {
-                val n = reader.read(bodyChars, read, contentLength - read)
-                if (n <= 0) break
+                val n = input.read(bodyBytes, read, contentLength - read)
+                if (n <= 0) return
                 read += n
             }
-            val (status, payload) = route(method, path, String(bodyChars))
+            val (status, payload) = route(method, path, bodyBytes.toString(Charsets.UTF_8))
             val bytes = payload.toByteArray(Charsets.UTF_8)
             val response = "HTTP/1.1 " + status + "\r\n" +
                 "Content-Type: application/json; charset=utf-8\r\n" +
@@ -304,6 +305,21 @@ private class LocalAiServer(
             out.write(response.toByteArray(Charsets.US_ASCII))
             out.write(bytes)
             out.flush()
+        }
+    }
+
+    private fun readHttpLine(input: BufferedInputStream): String? {
+        val bytes = ByteArrayOutputStream()
+        while (true) {
+            val b = input.read()
+            if (b < 0) return if (bytes.size() == 0) null else bytes.toString(Charsets.US_ASCII.name())
+            if (b == '\n'.code) {
+                val data = bytes.toByteArray()
+                val length = if (data.isNotEmpty() && data.last() == '\r'.code.toByte()) data.size - 1 else data.size
+                return String(data, 0, length, Charsets.US_ASCII)
+            }
+            bytes.write(b)
+            if (bytes.size() > 16 * 1024) return null
         }
     }
 
