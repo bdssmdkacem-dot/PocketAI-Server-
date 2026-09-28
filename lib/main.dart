@@ -44,6 +44,8 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _serverActionBusy = false;
   String _apiCheck = 'Not checked';
   String _modelsCheck = 'Not checked';
+  String _modelName = 'No model loaded';
+  bool _modelActionBusy = false;
 
   @override
   void initState() {
@@ -148,6 +150,36 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _importAndLoadModel() async {
+    if (_modelActionBusy || !_serverRunning) return;
+    setState(() { _modelActionBusy = true; _serverError = ''; });
+    try {
+      final picked = await _native.invokeMethod<Map<dynamic, dynamic>>('pickModel');
+      if (!mounted) return;
+      if (picked == null || picked['cancelled'] == true) return;
+      final name = picked['name']?.toString() ?? '';
+      if (name.isEmpty) throw StateError('No model was selected');
+      final client = HttpClient();
+      try {
+        client.connectionTimeout = const Duration(seconds: 3);
+        final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/models/load'));
+        request.headers.contentType = ContentType.json;
+        request.write(jsonEncode({'model': name}));
+        final response = await request.close().timeout(const Duration(minutes: 10));
+        final body = await response.transform(utf8.decoder).join();
+        if (response.statusCode < 200 || response.statusCode >= 300) throw StateError('HTTP ' + response.statusCode.toString() + ': ' + body);
+      } finally { client.close(force: true); }
+      final status = await _native.invokeMethod<Map<dynamic, dynamic>>('serverStatus');
+      if (!mounted) return;
+      setState(() { _modelName = status?['model']?.toString().isNotEmpty == true ? status!['model'].toString() : name; });
+      await _checkModels();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() { _modelsCheck = 'Model load failed: $error'; });
+    } finally {
+      if (mounted) setState(() { _modelActionBusy = false; });
+    }
+  }
   Future<void> _checkNativeEngine() async {
     try {
       final result = await _native.invokeMethod<Map<dynamic, dynamic>>('status');
@@ -164,6 +196,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _serverRunning = result?['serverRunning'] == true;
         _serverAddress = '${result?['serverHost'] ?? '127.0.0.1'}:${result?['serverPort'] ?? 8080}';
         _serverError = result?['serverError']?.toString() ?? '';
+        _modelName = result?['model']?.toString().isNotEmpty == true ? result!['model'].toString() : 'No model loaded';
       });
     } on PlatformException catch (error) {
       if (!mounted) return;
@@ -213,7 +246,12 @@ class _DashboardPageState extends State<DashboardPage> {
           InfoTile(title: 'Device', value: _device),
           InfoTile(title: 'llama.cpp', value: _status),
           InfoTile(title: 'Version', value: _version),
-          const InfoTile(title: 'Model', value: 'No model loaded'),
+          InfoTile(title: 'Model', value: _modelName),
+          FilledButton.icon(
+            onPressed: _serverRunning && !_modelActionBusy ? _importAndLoadModel : null,
+            icon: _modelActionBusy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.folder_open),
+            label: Text(_modelActionBusy ? 'Importing / loading model…' : 'Select & load GGUF model'),
+          ),
           InfoTile(title: 'Server', value: _serverRunning ? 'Running • $_serverAddress' : 'Stopped'),
           if (_serverError.isNotEmpty)
             Card(
