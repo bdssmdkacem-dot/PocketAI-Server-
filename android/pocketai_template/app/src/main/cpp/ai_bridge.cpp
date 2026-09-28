@@ -135,7 +135,6 @@ Java_com_pocketai_server_NativeAi_generate(JNIEnv* env, jobject, jstring prompt,
     const llama_vocab *vocab = llama_model_get_vocab(g_model);
     const int n_prompt = -llama_tokenize(vocab, input.c_str(), input.size(), nullptr, 0, true, true);
     if (n_prompt <= 0 || n_prompt >= 4096) {
-        env->ReleaseStringUTFChars(prompt, chars);
         return env->NewStringUTF("ERROR: prompt tokenization failed");
     }
 
