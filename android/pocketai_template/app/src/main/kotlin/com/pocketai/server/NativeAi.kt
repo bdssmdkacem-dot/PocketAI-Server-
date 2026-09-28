@@ -10,6 +10,7 @@ class NativeAi {
     external fun isModelLoaded(): Boolean
     external fun loadedModelName(): String
     external fun generate(prompt: String, maxTokens: Int, temperature: Float): String
+    external fun lastInferenceStats(): String
 
     companion object {
         init { System.loadLibrary("pocket_ai") }
