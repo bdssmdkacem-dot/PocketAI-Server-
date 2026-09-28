@@ -167,8 +167,10 @@ class _DashboardPageState extends State<DashboardPage> {
       try {
         client.connectionTimeout = const Duration(seconds: 3);
         final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/models/load'));
+        final payload = jsonEncode({'model': name});
         request.headers.contentType = ContentType.json;
-        request.write(jsonEncode({'model': name}));
+        request.contentLength = utf8.encode(payload).length;
+        request.write(payload);
         final response = await request.close().timeout(const Duration(minutes: 10));
         final body = await response.transform(utf8.decoder).join();
         if (response.statusCode < 200 || response.statusCode >= 300) throw StateError('HTTP ${response.statusCode}: $body');
