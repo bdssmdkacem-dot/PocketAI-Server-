@@ -26,6 +26,7 @@ class MainActivity : FlutterActivity() {
     private var serverInitError: String? = null
     private var pendingModelPicker: MethodChannel.Result? = null
     private val modelPickerRequestCode = 1001
+    private val executorForModelImport = Executors.newSingleThreadExecutor()
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -151,28 +152,32 @@ class MainActivity : FlutterActivity() {
         }
 
         val uri: Uri = data.data!!
-        try {
-            val name = queryDisplayName(uri)
-            if (name.isBlank() || !name.endsWith(".gguf", true) ||
-                name.contains("/") || name.contains("\\") || name.contains("..")) {
-                result.error("INVALID_MODEL", "Please select a .gguf model file", null)
-                return
-            }
+        executorForModelImport.execute {
+            try {
+                val name = queryDisplayName(uri)
+                if (name.isBlank() || !name.endsWith(".gguf", true) ||
+                    name.contains("/") || name.contains("\\") || name.contains("..")) {
+                    runOnUiThread { result.error("INVALID_MODEL", "Please select a .gguf model file", null) }
+                    return@execute
+                }
 
-            val modelsDir = java.io.File(filesDir, "models").apply { mkdirs() }
-            val target = java.io.File(modelsDir, name)
-            contentResolver.openInputStream(uri).use { input ->
-                if (input == null) throw IllegalStateException("Cannot open selected model")
-                target.outputStream().use { output -> input.copyTo(output) }
+                val modelsDir = java.io.File(filesDir, "models").apply { mkdirs() }
+                val target = java.io.File(modelsDir, name)
+                contentResolver.openInputStream(uri).use { input ->
+                    if (input == null) throw IllegalStateException("Cannot open selected model")
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+                runOnUiThread {
+                    result.success(mapOf(
+                        "cancelled" to false,
+                        "name" to name,
+                        "path" to target.absolutePath,
+                        "sizeBytes" to target.length()
+                    ))
+                }
+            } catch (t: Throwable) {
+                runOnUiThread { result.error("MODEL_IMPORT_FAILED", t.message ?: "Failed to import model", null) }
             }
-            result.success(mapOf(
-                "cancelled" to false,
-                "name" to name,
-                "path" to target.absolutePath,
-                "sizeBytes" to target.length()
-            ))
-        } catch (t: Throwable) {
-            result.error("MODEL_IMPORT_FAILED", t.message ?: "Failed to import model", null)
         }
     }
 
@@ -190,6 +195,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         server?.stop()
         server = null
+        executorForModelImport.shutdownNow()
         if (nativeInitError == null) {
             try { nativeAi.unloadModel() } catch (_: Throwable) {}
         }
