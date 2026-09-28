@@ -55,9 +55,20 @@ class _DashboardPageState extends State<DashboardPage> {
     });
 
     try {
-      final result = await _native.invokeMethod<Map<dynamic, dynamic>>('startServer');
-      if (!mounted) return;
+      await _native.invokeMethod<Map<dynamic, dynamic>>('startServer');
 
+      // Socket creation/bind now happens on Android's background thread.
+      // Give it a short window to finish before reading the final server state.
+      Map<dynamic, dynamic>? result;
+      for (var attempt = 0; attempt < 10; attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        result = await _native.invokeMethod<Map<dynamic, dynamic>>('serverStatus');
+        if (result?['running'] == true || (result?['error']?.toString() ?? '').isNotEmpty) {
+          break;
+        }
+      }
+
+      if (!mounted) return;
       setState(() {
         _serverRunning = result?['running'] == true;
         _serverAddress = '${result?['host'] ?? '127.0.0.1'}:${result?['port'] ?? 8080}';
