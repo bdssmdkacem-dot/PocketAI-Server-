@@ -43,6 +43,7 @@ class _DashboardPageState extends State<DashboardPage> {
   String _serverError = '';
   bool _serverActionBusy = false;
   String _apiCheck = 'Not checked';
+  String _modelsCheck = 'Not checked';
 
   @override
   void initState() {
@@ -118,6 +119,30 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _apiCheck = 'API check failed: $error');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _checkModels() async {
+    if (!_serverRunning) {
+      setState(() => _modelsCheck = 'Server is not running');
+      return;
+    }
+    setState(() => _modelsCheck = 'Checking /v1/models…');
+    final client = HttpClient();
+    try {
+      client.connectionTimeout = const Duration(seconds: 3);
+      final request = await client.getUrl(Uri.parse('http://127.0.0.1:8080/v1/models'));
+      final response = await request.close().timeout(const Duration(seconds: 5));
+      final body = await response.transform(utf8.decoder).join();
+      if (!mounted) return;
+      setState(() {
+        _modelsCheck = 'HTTP ${response.statusCode}: $body';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _modelsCheck = 'API check failed: $error');
     } finally {
       client.close(force: true);
     }
@@ -216,6 +241,12 @@ class _DashboardPageState extends State<DashboardPage> {
             onPressed: _serverRunning ? _checkApi : null,
             icon: const Icon(Icons.health_and_safety_outlined),
             label: const Text('Test /health'),
+          ),
+          InfoTile(title: 'Models API', value: _modelsCheck),
+          FilledButton.icon(
+            onPressed: _serverRunning ? _checkModels : null,
+            icon: const Icon(Icons.view_list_outlined),
+            label: const Text('Test /v1/models'),
           ),
           const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
           const SizedBox(height: 8),
