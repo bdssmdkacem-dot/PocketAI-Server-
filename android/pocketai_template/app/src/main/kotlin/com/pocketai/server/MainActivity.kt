@@ -1,6 +1,8 @@
 package com.pocketai.server
 
 import android.app.ActivityManager
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -22,6 +24,8 @@ class MainActivity : FlutterActivity() {
     private var server: LocalAiServer? = null
     private var nativeInitError: String? = null
     private var serverInitError: String? = null
+    private var pendingModelPicker: MethodChannel.Result? = null
+    private val modelPickerRequestCode = 1001
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -44,6 +48,7 @@ class MainActivity : FlutterActivity() {
                         result.success(serverStatus())
                     }
                     "serverStatus" -> result.success(serverStatus())
+                    "pickModel" -> pickModel(result)
                     else -> result.notImplemented()
                 }
             }
@@ -111,6 +116,75 @@ class MainActivity : FlutterActivity() {
             "availableRamBytes" to memoryInfo.availMem,
             "lowMemory" to memoryInfo.lowMemory,
         )
+    }
+
+    private fun pickModel(result: MethodChannel.Result) {
+        if (pendingModelPicker != null) {
+            result.error("PICKER_BUSY", "A model picker is already open", null)
+            return
+        }
+        pendingModelPicker = result
+        try {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "application/x-gguf", "*/*"))
+            }
+            startActivityForResult(intent, modelPickerRequestCode)
+        } catch (t: Throwable) {
+            pendingModelPicker = null
+            result.error("PICKER_FAILED", t.message ?: "Unable to open model picker", null)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != modelPickerRequestCode) return
+        val result = pendingModelPicker
+        pendingModelPicker = null
+        if (result == null) return
+
+        if (resultCode != RESULT_OK || data?.data == null) {
+            result.success(mapOf("cancelled" to true))
+            return
+        }
+
+        val uri: Uri = data.data!!
+        try {
+            val name = queryDisplayName(uri)
+            if (name.isBlank() || !name.endsWith(".gguf", true) ||
+                name.contains("/") || name.contains("\\") || name.contains("..")) {
+                result.error("INVALID_MODEL", "Please select a .gguf model file", null)
+                return
+            }
+
+            val modelsDir = java.io.File(filesDir, "models").apply { mkdirs() }
+            val target = java.io.File(modelsDir, name)
+            contentResolver.openInputStream(uri).use { input ->
+                if (input == null) throw IllegalStateException("Cannot open selected model")
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            result.success(mapOf(
+                "cancelled" to false,
+                "name" to name,
+                "path" to target.absolutePath,
+                "sizeBytes" to target.length()
+            ))
+        } catch (t: Throwable) {
+            result.error("MODEL_IMPORT_FAILED", t.message ?: "Failed to import model", null)
+        }
+    }
+
+    private fun queryDisplayName(uri: Uri): String {
+        val projection = arrayOf("_display_name")
+        contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex("_display_name")
+                if (index >= 0) return cursor.getString(index) ?: ""
+            }
+        }
+        return uri.lastPathSegment?.substringAfterLast('/') ?: ""
     }
 
     override fun onDestroy() {
