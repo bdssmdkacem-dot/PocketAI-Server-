@@ -146,7 +146,7 @@ private class LocalAiServer(
         // can raise NetworkOnMainThreadException.
         executor.execute {
             try {
-                val address = InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), port)
+                val address = InetSocketAddress(java.net.InetAddress.getByName("127.0.0.1"), port)
                 val boundSocket = ServerSocket()
                 boundSocket.reuseAddress = true
                 boundSocket.bind(address, 32)
