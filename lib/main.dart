@@ -167,7 +167,7 @@ class _DashboardPageState extends State<DashboardPage> {
         request.write(jsonEncode({'model': name}));
         final response = await request.close().timeout(const Duration(minutes: 10));
         final body = await response.transform(utf8.decoder).join();
-        if (response.statusCode < 200 || response.statusCode >= 300) throw StateError('HTTP ' + response.statusCode.toString() + ': ' + body);
+        if (response.statusCode < 200 || response.statusCode >= 300) throw StateError('HTTP ${response.statusCode}: $body');
       } finally { client.close(force: true); }
       final status = await _native.invokeMethod<Map<dynamic, dynamic>>('serverStatus');
       if (!mounted) return;
