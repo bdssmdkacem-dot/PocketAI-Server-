@@ -9,12 +9,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
 import java.net.BindException
+import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
@@ -55,7 +54,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun ensureServer() {
-        if (nativeInitError != null || server?.isRunning() == true) return
+        if (nativeInitError != null || server?.isRunning() == true || server?.isStarting() == true) return
         try {
             server?.stop()
         } catch (_: Throwable) {}
@@ -82,7 +81,7 @@ class MainActivity : FlutterActivity() {
             "serverRunning" to (server?.isRunning() == true),
             "serverHost" to "127.0.0.1",
             "serverPort" to 8080,
-            "serverError" to (serverInitError ?: ""),
+            "serverError" to (serverInitError ?: server?.error().orEmpty()),
         )
     }
 
@@ -94,7 +93,7 @@ class MainActivity : FlutterActivity() {
             "port" to (server?.port ?: 8080),
             "modelLoaded" to (ai?.isModelLoaded() ?: false),
             "model" to (ai?.loadedModelName().orEmpty()),
-            "error" to (nativeInitError ?: serverInitError ?: ""),
+            "error" to (nativeInitError ?: serverInitError ?: server?.error().orEmpty()),
         )
     }
 
@@ -133,61 +132,48 @@ private class LocalAiServer(
     @Volatile private var running = false
     private var socket: ServerSocket? = null
 
+    @Volatile private var starting = false
+    @Volatile private var startupError: String? = null
+
     fun start() {
-        if (running) return
+        if (running || starting) return
         java.io.File(filesDir, "models").mkdirs()
+        startupError = null
+        starting = true
 
-        val loopback = InetAddress.getLoopbackAddress()
-        val address = InetSocketAddress(loopback, port)
-
-        // Preflight: distinguish an already-used port from a bind permission/policy
-        // failure before starting the accept loop. Never expose the server externally.
-        try {
-            Socket().use { probe ->
-                probe.connect(address, 150)
-                throw IllegalStateException("local port $port is already in use")
-            }
-        } catch (e: IllegalStateException) {
-            throw e
-        } catch (_: java.net.ConnectException) {
-            // Expected when nothing is listening yet.
-        } catch (e: Throwable) {
-            throw IllegalStateException(
-                "cannot probe local server port $port on 127.0.0.1: ${e.javaClass.simpleName}: ${e.message ?: "connection probe failed"}",
-                e
-            )
-        }
-
-        try {
-            val boundSocket = ServerSocket()
-            boundSocket.reuseAddress = true
-            boundSocket.bind(address, 32)
-            socket = boundSocket
-        } catch (e: BindException) {
-            throw IllegalStateException(
-                "cannot bind local server to 127.0.0.1:$port: BindException: ${e.message ?: "bind rejected"}",
-                e
-            )
-        } catch (e: SecurityException) {
-            throw IllegalStateException(
-                "cannot bind local server to 127.0.0.1:$port: SecurityException: ${e.message ?: "operation not permitted"}",
-                e
-            )
-        } catch (e: SocketException) {
-            throw IllegalStateException(
-                "cannot bind local server to 127.0.0.1:$port: SocketException: ${e.message ?: "socket operation failed"}",
-                e
-            )
-        }
-
-        running = true
+        // All socket creation/bind/accept work runs off Android's main thread.
+        // This is required on Android because network operations on the UI thread
+        // can raise NetworkOnMainThreadException.
         executor.execute {
-            while (running) {
-                try {
-                    val client = socket?.accept() ?: break
-                    executor.execute { handle(client) }
-                } catch (_: SocketException) {
-                    if (running) break
+            try {
+                val address = InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), port)
+                val boundSocket = ServerSocket()
+                boundSocket.reuseAddress = true
+                boundSocket.bind(address, 32)
+                socket = boundSocket
+                running = true
+
+                while (running) {
+                    try {
+                        val client = socket?.accept() ?: break
+                        executor.execute { handle(client) }
+                    } catch (_: SocketException) {
+                        if (running) break
+                    }
+                }
+            } catch (e: BindException) {
+                startupError = "cannot bind local server to 127.0.0.1:$port: BindException: ${e.message ?: "bind rejected"}"
+            } catch (e: SecurityException) {
+                startupError = "cannot bind local server to 127.0.0.1:$port: SecurityException: ${e.message ?: "operation not permitted"}"
+            } catch (e: SocketException) {
+                startupError = "cannot bind local server to 127.0.0.1:$port: SocketException: ${e.message ?: "socket operation failed"}"
+            } catch (e: Throwable) {
+                startupError = "cannot start local server on 127.0.0.1:$port: ${e.javaClass.simpleName}: ${e.message ?: "server startup failed"}"
+            } finally {
+                starting = false
+                if (!running) {
+                    try { socket?.close() } catch (_: Exception) {}
+                    socket = null
                 }
             }
         }
@@ -201,6 +187,8 @@ private class LocalAiServer(
     }
 
     fun isRunning() = running
+    fun isStarting() = starting
+    fun error() = startupError ?: ""
 
     private fun handle(client: Socket) {
         client.use { c ->
