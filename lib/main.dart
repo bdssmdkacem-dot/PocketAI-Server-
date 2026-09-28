@@ -67,7 +67,7 @@ class _DashboardPageState extends State<DashboardPage> {
       // Socket creation/bind now happens on Android's background thread.
       // Give it a short window to finish before reading the final server state.
       Map<dynamic, dynamic>? result;
-      for (var attempt = 0; attempt < 10; attempt++) {
+      for (var attempt = 0; attempt < 50; attempt++) {
         await Future<void>.delayed(const Duration(milliseconds: 100));
         result = await _native.invokeMethod<Map<dynamic, dynamic>>('serverStatus');
         if (result?['running'] == true || (result?['error']?.toString() ?? '').isNotEmpty) {
@@ -83,6 +83,10 @@ class _DashboardPageState extends State<DashboardPage> {
       });
 
       await _checkNativeEngine();
+      if (_serverRunning) {
+        await _checkApi();
+        await _checkModels();
+      }
     } on PlatformException catch (error) {
       if (!mounted) return;
       setState(() {
