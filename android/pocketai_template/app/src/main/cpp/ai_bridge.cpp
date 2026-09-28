@@ -118,19 +118,31 @@ Java_com_pocketai_server_NativeAi_generate(JNIEnv* env, jobject, jstring prompt,
         return env->NewStringUTF("ERROR: no model loaded");
     }
 
+    std::string input(chars);
+    env->ReleaseStringUTFChars(prompt, chars);
+
+    // Qwen2 instruct models expect ChatML framing. Keep other model families on
+    // the existing raw-prompt path until their templates are explicitly added.
+    char architecture[64] = {0};
+    const bool is_qwen2 = llama_model_meta_val_str(
+        g_model, "general.architecture", architecture, sizeof(architecture)) > 0 &&
+        std::string(architecture) == "qwen2";
+    if (is_qwen2) {
+        input = "<|im_start|>user\n" + input +
+                "<|im_end|>\n<|im_start|>assistant\n";
+    }
+
     const llama_vocab *vocab = llama_model_get_vocab(g_model);
-    const int n_prompt = -llama_tokenize(vocab, chars, std::strlen(chars), nullptr, 0, true, true);
+    const int n_prompt = -llama_tokenize(vocab, input.c_str(), input.size(), nullptr, 0, true, true);
     if (n_prompt <= 0 || n_prompt >= 4096) {
         env->ReleaseStringUTFChars(prompt, chars);
         return env->NewStringUTF("ERROR: prompt tokenization failed");
     }
 
     std::vector<llama_token> tokens(n_prompt);
-    if (llama_tokenize(vocab, chars, std::strlen(chars), tokens.data(), tokens.size(), true, true) < 0) {
-        env->ReleaseStringUTFChars(prompt, chars);
+    if (llama_tokenize(vocab, input.c_str(), input.size(), tokens.data(), tokens.size(), true, true) < 0) {
         return env->NewStringUTF("ERROR: prompt tokenization failed");
     }
-    env->ReleaseStringUTFChars(prompt, chars);
 
     llama_memory_clear(llama_get_memory(g_ctx), true);
     llama_sampler_reset(g_sampler);
