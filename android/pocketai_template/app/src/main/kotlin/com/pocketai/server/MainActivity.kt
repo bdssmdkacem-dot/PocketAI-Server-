@@ -382,6 +382,7 @@ private class LocalAiServer(
                         val maxTokens = json.optInt("max_tokens", 128).coerceIn(1, 512)
                         val temperature = json.optDouble("temperature", 0.7).toFloat().coerceIn(0.0f, 2.0f)
                         val response = nativeAi.generate(prompt, maxTokens, temperature)
+                        val performance = try { JSONObject(nativeAi.lastInferenceStats()) } catch (_: Throwable) { JSONObject() }
                         if (response.startsWith("ERROR:")) {
                             "500 Internal Server Error" to JSONObject().put("error", response).toString()
                         } else {
@@ -393,6 +394,7 @@ private class LocalAiServer(
                                 .put("id", "chatcmpl-pocketai-" + System.currentTimeMillis())
                                 .put("object", "chat.completion")
                                 .put("model", nativeAi.loadedModelName())
+                                .put("pocketai_performance", performance)
                                 .put("choices", JSONArray().put(choice))
                                 .toString()
                         }
