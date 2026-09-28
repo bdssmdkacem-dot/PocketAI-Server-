@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 
 void main() => runApp(const PocketAiApp());
@@ -39,6 +42,7 @@ class _DashboardPageState extends State<DashboardPage> {
   String _serverAddress = '127.0.0.1:8080';
   String _serverError = '';
   bool _serverActionBusy = false;
+  String _apiCheck = 'Not checked';
 
   @override
   void initState() {
@@ -92,6 +96,30 @@ class _DashboardPageState extends State<DashboardPage> {
           _serverActionBusy = false;
         });
       }
+    }
+  }
+
+  Future<void> _checkApi() async {
+    if (!_serverRunning) {
+      setState(() => _apiCheck = 'Server is not running');
+      return;
+    }
+    setState(() => _apiCheck = 'Checking /health…');
+    final client = HttpClient();
+    try {
+      client.connectionTimeout = const Duration(seconds: 3);
+      final request = await client.getUrl(Uri.parse('http://127.0.0.1:8080/health'));
+      final response = await request.close().timeout(const Duration(seconds: 5));
+      final body = await response.transform(utf8.decoder).join();
+      if (!mounted) return;
+      setState(() {
+        _apiCheck = 'HTTP ${response.statusCode}: $body';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _apiCheck = 'API check failed: $error');
+    } finally {
+      client.close(force: true);
     }
   }
 
@@ -183,6 +211,12 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           InfoTile(title: 'API', value: 'http://$_serverAddress/v1'),
+          InfoTile(title: 'Health', value: _apiCheck),
+          FilledButton.icon(
+            onPressed: _serverRunning ? _checkApi : null,
+            icon: const Icon(Icons.health_and_safety_outlined),
+            label: const Text('Test /health'),
+          ),
           const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
           const SizedBox(height: 8),
           FilledButton.icon(
