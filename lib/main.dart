@@ -188,7 +188,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (mounted) setState(() { _modelActionBusy = false; });
     }
   }
-  Future<void> _testChat() async {
+  Future<void> _testChat(String prompt) async {
     if (_chatBusy || !_serverRunning) return;
     setState(() => _chatBusy = true);
     final stopwatch = Stopwatch()..start();
@@ -200,7 +200,7 @@ class _DashboardPageState extends State<DashboardPage> {
       );
       final payload = jsonEncode({
         'messages': [
-          {'role': 'user', 'content': 'Hello, who are you?'},
+          {'role': 'user', 'content': prompt},
         ],
         'max_tokens': 64,
         'temperature': 0.7,
@@ -339,17 +339,16 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           InfoTile(title: 'Chat completion', value: _chatCheck),
           FilledButton.icon(
-            onPressed: _serverRunning && !_chatBusy ? _testChat : null,
+            onPressed: _serverRunning && !_chatBusy ? () => _testChat('Hello, who are you?') : null,
             icon: _chatBusy
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.chat_outlined),
-            label: Text(_chatBusy
-                ? 'Running inference…'
-                : 'Test /v1/chat/completions'),
+            label: Text(_chatBusy ? 'Running inference…' : 'Test English chat'),
+          ),
+          FilledButton.icon(
+            onPressed: _serverRunning && !_chatBusy ? () => _testChat('من أنت؟ ما اسم النموذج الذي تعمل به؟ وهل تستطيع الإجابة باللغة العربية؟') : null,
+            icon: const Icon(Icons.translate),
+            label: const Text('Test Arabic chat'),
           ),
           const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
           const SizedBox(height: 8),
