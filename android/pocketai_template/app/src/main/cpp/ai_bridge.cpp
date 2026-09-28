@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <chrono>
 #include "llama.h"
 
 static llama_model *g_model = nullptr;
@@ -12,6 +13,8 @@ static llama_context *g_ctx = nullptr;
 static llama_sampler *g_sampler = nullptr;
 static std::string g_model_path;
 static std::mutex g_mutex;
+static std::string g_last_inference_stats = "{}";
+static int g_threads = 1;
 
 static void free_model_locked() {
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
@@ -64,6 +67,7 @@ Java_com_pocketai_server_NativeAi_loadModel(JNIEnv* env, jobject, jstring path) 
     cp.n_ctx = 2048;
     cp.n_batch = 512;
     const int threads = std::max(1, std::min(8, (int) std::thread::hardware_concurrency()));
+    g_threads = threads;
     cp.n_threads = threads;
     cp.n_threads_batch = threads;
 
@@ -108,6 +112,12 @@ Java_com_pocketai_server_NativeAi_loadedModelName(JNIEnv* env, jobject) {
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_com_pocketai_server_NativeAi_lastInferenceStats(JNIEnv* env, jobject) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return env->NewStringUTF(g_last_inference_stats.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_pocketai_server_NativeAi_generate(JNIEnv* env, jobject, jstring prompt, jint max_tokens, jfloat) {
     const char *chars = env->GetStringUTFChars(prompt, nullptr);
     if (!chars) return env->NewStringUTF("ERROR: invalid prompt");
@@ -132,7 +142,11 @@ Java_com_pocketai_server_NativeAi_generate(JNIEnv* env, jobject, jstring prompt,
                 "<|im_end|>\n<|im_start|>assistant\n";
     }
 
+    using Clock = std::chrono::steady_clock;
+    const auto total_start = Clock::now();
+
     const llama_vocab *vocab = llama_model_get_vocab(g_model);
+    const auto tokenize_start = Clock::now();
     const int n_prompt = -llama_tokenize(vocab, input.c_str(), input.size(), nullptr, 0, true, true);
     if (n_prompt <= 0 || n_prompt >= 4096) {
         return env->NewStringUTF("ERROR: prompt tokenization failed");
@@ -142,15 +156,20 @@ Java_com_pocketai_server_NativeAi_generate(JNIEnv* env, jobject, jstring prompt,
     if (llama_tokenize(vocab, input.c_str(), input.size(), tokens.data(), tokens.size(), true, true) < 0) {
         return env->NewStringUTF("ERROR: prompt tokenization failed");
     }
+    const auto tokenize_end = Clock::now();
 
     llama_memory_clear(llama_get_memory(g_ctx), true);
     llama_sampler_reset(g_sampler);
 
     llama_batch batch = llama_batch_get_one(tokens.data(), (int32_t)tokens.size());
+    const auto prompt_decode_start = Clock::now();
     if (llama_decode(g_ctx, batch) != 0) return env->NewStringUTF("ERROR: prompt decode failed");
+    const auto prompt_decode_end = Clock::now();
 
     std::string output;
     const int limit = std::max(1, std::min(512, (int)max_tokens));
+    int generated_tokens = 0;
+    const auto generation_start = Clock::now();
     for (int i = 0; i < limit; ++i) {
         const llama_token token = llama_sampler_sample(g_sampler, g_ctx, -1);
         if (llama_vocab_is_eog(vocab, token)) break;
@@ -159,10 +178,31 @@ Java_com_pocketai_server_NativeAi_generate(JNIEnv* env, jobject, jstring prompt,
         const int n = llama_token_to_piece(vocab, token, buf, sizeof(buf), 0, true);
         if (n < 0) break;
         output.append(buf, n);
+        ++generated_tokens;
 
         batch = llama_batch_get_one(const_cast<llama_token*>(&token), 1);
         if (llama_decode(g_ctx, batch) != 0) break;
     }
+
+    const auto generation_end = Clock::now();
+    const auto total_end = Clock::now();
+    const auto ms = [](auto start, auto end) {
+        return std::chrono::duration<double, std::milli>(end - start).count();
+    };
+    const double generation_ms = ms(generation_start, generation_end);
+    const double total_ms = ms(total_start, total_end);
+    const double prompt_ms = ms(prompt_decode_start, prompt_decode_end);
+    const double generation_tps = generation_ms > 0.0 ? generated_tokens * 1000.0 / generation_ms : 0.0;
+    const double prompt_tps = prompt_ms > 0.0 ? n_prompt * 1000.0 / prompt_ms : 0.0;
+    g_last_inference_stats = "{\"prompt_tokens\":" + std::to_string(n_prompt) +
+        ",\"generated_tokens\":" + std::to_string(generated_tokens) +
+        ",\"threads\":" + std::to_string(g_threads) +
+        ",\"tokenize_ms\":" + std::to_string(ms(tokenize_start, tokenize_end)) +
+        ",\"prompt_decode_ms\":" + std::to_string(prompt_ms) +
+        ",\"generation_ms\":" + std::to_string(generation_ms) +
+        ",\"total_native_ms\":" + std::to_string(total_ms) +
+        ",\"prompt_tokens_per_sec\":" + std::to_string(prompt_tps) +
+        ",\"generation_tokens_per_sec\":" + std::to_string(generation_tps) + "}";
 
     return env->NewStringUTF(output.c_str());
 }
