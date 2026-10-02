@@ -48,6 +48,8 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _modelActionBusy = false;
   String _chatCheck = 'Not tested';
   bool _chatBusy = false;
+  bool _benchmarkBusy = false;
+  String _benchmarkCheck = 'Not run';
 
   @override
   void initState() {
@@ -231,6 +233,68 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _runInferenceBenchmark() async {
+    if (_benchmarkBusy || !_serverRunning) return;
+    setState(() {
+      _benchmarkBusy = true;
+      _benchmarkCheck = 'Running 3 identical warm-up/inference rounds…';
+    });
+
+    final client = HttpClient();
+    final results = <String>[];
+    const prompt = 'Hello, give a short one-sentence answer.';
+    try {
+      client.connectionTimeout = const Duration(seconds: 3);
+      for (var round = 1; round <= 3; round++) {
+        final stopwatch = Stopwatch()..start();
+        final request = await client.postUrl(
+          Uri.parse('http://127.0.0.1:8080/v1/chat/completions'),
+        );
+        final payload = jsonEncode({
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'max_tokens': 16,
+          'temperature': 0.0,
+        });
+        request.headers.contentType = ContentType.json;
+        request.contentLength = utf8.encode(payload).length;
+        request.write(payload);
+        final response = await request.close().timeout(const Duration(minutes: 3));
+        final body = await response.transform(utf8.decoder).join();
+        stopwatch.stop();
+
+        try {
+          final decoded = jsonDecode(body) as Map<String, dynamic>;
+          final perf = decoded['pocketai_performance'] as Map<String, dynamic>?;
+          if (perf != null) {
+            results.add(
+              'Round $round: HTTP ${response.statusCode} • '
+              'total ${perf['total_native_ms']} ms • '
+              'prompt ${perf['prompt_decode_ms']} ms (${perf['prompt_tokens_per_sec']} tok/s) • '
+              'generation ${perf['generation_ms']} ms (${perf['generation_tokens_per_sec']} tok/s) • '
+              'tokens ${perf['generated_tokens']}',
+            );
+          } else {
+            results.add('Round $round: HTTP ${response.statusCode} • no performance data');
+          }
+        } catch (_) {
+          results.add('Round $round: HTTP ${response.statusCode} • ${stopwatch.elapsedMilliseconds} ms');
+        }
+        if (mounted) {
+          setState(() => _benchmarkCheck = results.join('\\n'));
+        }
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _benchmarkCheck = 'Benchmark failed: $error');
+      }
+    } finally {
+      client.close(force: true);
+      if (mounted) setState(() => _benchmarkBusy = false);
+    }
+  }
+
   Future<void> _checkNativeEngine() async {
     try {
       final result = await _native.invokeMethod<Map<dynamic, dynamic>>('status');
@@ -349,6 +413,14 @@ class _DashboardPageState extends State<DashboardPage> {
             onPressed: _serverRunning && !_chatBusy ? () => _testChat('من أنت؟ ما اسم النموذج الذي تعمل به؟ وهل تستطيع الإجابة باللغة العربية؟') : null,
             icon: const Icon(Icons.translate),
             label: const Text('Test Arabic chat'),
+          ),
+          InfoTile(title: 'Inference benchmark', value: _benchmarkCheck),
+          FilledButton.icon(
+            onPressed: _serverRunning && !_benchmarkBusy ? _runInferenceBenchmark : null,
+            icon: _benchmarkBusy
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.speed),
+            label: Text(_benchmarkBusy ? 'Benchmarking…' : 'Run 3-round inference benchmark'),
           ),
           const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
           const SizedBox(height: 8),
