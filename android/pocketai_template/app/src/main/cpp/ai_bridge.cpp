@@ -23,6 +23,47 @@ static void free_model_locked() {
     g_model_path.clear();
 }
 
+static void warmup_locked() {
+    if (!g_model || !g_ctx || !g_sampler) return;
+
+    // Exercise the same prompt-decode and first-sample paths used by Qwen2
+    // before the first real request. The result is discarded and all state is
+    // reset so warm-up cannot affect the user's first generation.
+    char architecture[64] = {0};
+    const bool is_qwen2 = llama_model_meta_val_str(
+        g_model, "general.architecture", architecture, sizeof(architecture)) > 0 &&
+        std::string(architecture) == "qwen2";
+
+    std::string input = "Hello";
+    if (is_qwen2) {
+        input = "<|im_start|>user\nHello\n<|im_end|>\n<|im_start|>assistant\n";
+    }
+
+    const llama_vocab *vocab = llama_model_get_vocab(g_model);
+    const int n_prompt = -llama_tokenize(
+        vocab, input.c_str(), input.size(), nullptr, 0, true, true);
+    if (n_prompt <= 0 || n_prompt >= 128) return;
+
+    std::vector<llama_token> tokens(n_prompt);
+    if (llama_tokenize(
+            vocab, input.c_str(), input.size(), tokens.data(), tokens.size(), true, true) < 0) {
+        return;
+    }
+
+    llama_memory_clear(llama_get_memory(g_ctx), true);
+    llama_sampler_reset(g_sampler);
+
+    llama_batch batch = llama_batch_get_one(tokens.data(), (int32_t)tokens.size());
+    if (llama_decode(g_ctx, batch) == 0) {
+        const llama_token token = llama_sampler_sample(g_sampler, g_ctx, -1);
+        (void) token;
+    }
+
+    // Never carry warm-up KV/sampler state into the first user request.
+    llama_memory_clear(llama_get_memory(g_ctx), true);
+    llama_sampler_reset(g_sampler);
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_pocketai_server_NativeAi_isReady(JNIEnv*, jobject) { return JNI_TRUE; }
 
@@ -86,6 +127,11 @@ Java_com_pocketai_server_NativeAi_loadModel(JNIEnv* env, jobject, jstring path) 
     }
     llama_sampler_chain_add(g_sampler, llama_sampler_init_greedy());
     g_model_path = chars;
+
+    // Pay one-time kernel/sampler initialization cost while loading the model,
+    // rather than making the first real conversation pay it.
+    warmup_locked();
+
     env->ReleaseStringUTFChars(path, chars);
     return JNI_TRUE;
 }
