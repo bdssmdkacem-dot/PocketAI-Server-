@@ -14,6 +14,7 @@ static llama_sampler *g_sampler = nullptr;
 static std::string g_model_path;
 static std::mutex g_mutex;
 static std::string g_last_inference_stats = "{}";
+static double g_warmup_ms = 0.0;
 static int g_threads = 1;
 
 static void free_model_locked() {
@@ -25,6 +26,8 @@ static void free_model_locked() {
 
 static void warmup_locked() {
     if (!g_model || !g_ctx || !g_sampler) return;
+    using Clock = std::chrono::steady_clock;
+    const auto warmup_start = Clock::now();
 
     // Exercise the same prompt-decode and first-sample paths used by Qwen2
     // before the first real request. The result is discarded and all state is
@@ -62,6 +65,7 @@ static void warmup_locked() {
     // Never carry warm-up KV/sampler state into the first user request.
     llama_memory_clear(llama_get_memory(g_ctx), true);
     llama_sampler_reset(g_sampler);
+    g_warmup_ms = std::chrono::duration<double, std::milli>(Clock::now() - warmup_start).count();
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -240,7 +244,8 @@ Java_com_pocketai_server_NativeAi_generate(JNIEnv* env, jobject, jstring prompt,
     const double prompt_ms = ms(prompt_decode_start, prompt_decode_end);
     const double generation_tps = generation_ms > 0.0 ? generated_tokens * 1000.0 / generation_ms : 0.0;
     const double prompt_tps = prompt_ms > 0.0 ? n_prompt * 1000.0 / prompt_ms : 0.0;
-    g_last_inference_stats = "{\"prompt_tokens\":" + std::to_string(n_prompt) +
+    g_last_inference_stats = "{\"warmup_ms\":" + std::to_string(g_warmup_ms) +
+        ",\"prompt_tokens\":" + std::to_string(n_prompt) +
         ",\"generated_tokens\":" + std::to_string(generated_tokens) +
         ",\"threads\":" + std::to_string(g_threads) +
         ",\"tokenize_ms\":" + std::to_string(ms(tokenize_start, tokenize_end)) +
