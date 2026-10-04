@@ -50,6 +50,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _chatBusy = false;
   bool _benchmarkBusy = false;
   String _benchmarkCheck = 'Not run';
+  String _warmupCheck = 'Not measured';
 
   @override
   void initState() {
@@ -270,6 +271,7 @@ class _DashboardPageState extends State<DashboardPage> {
           if (perf != null) {
             results.add(
               'Round $round: HTTP ${response.statusCode} • '
+              'warmup ${perf['warmup_ms'] ?? 'n/a'} ms • '
               'total ${perf['total_native_ms']} ms • '
               'prompt ${perf['prompt_decode_ms']} ms (${perf['prompt_tokens_per_sec']} tok/s) • '
               'generation ${perf['generation_ms']} ms (${perf['generation_tokens_per_sec']} tok/s) • '
@@ -282,7 +284,12 @@ class _DashboardPageState extends State<DashboardPage> {
           results.add('Round $round: HTTP ${response.statusCode} • ${stopwatch.elapsedMilliseconds} ms');
         }
         if (mounted) {
-          setState(() => _benchmarkCheck = results.join('\\n'));
+          setState(() {
+            _benchmarkCheck = results.join('\\n');
+            final last = results.isNotEmpty ? results.last : '';
+            final match = RegExp(r'warmup ([^ ]+) ms').firstMatch(last);
+            _warmupCheck = match == null ? 'Not reported' : '${match.group(1)} ms';
+          });
         }
       }
     } catch (error) {
@@ -414,6 +421,7 @@ class _DashboardPageState extends State<DashboardPage> {
             icon: const Icon(Icons.translate),
             label: const Text('Test Arabic chat'),
           ),
+          InfoTile(title: 'Warm-up', value: _warmupCheck),
           InfoTile(title: 'Inference benchmark', value: _benchmarkCheck),
           FilledButton.icon(
             onPressed: _serverRunning && !_benchmarkBusy ? _runInferenceBenchmark : null,
