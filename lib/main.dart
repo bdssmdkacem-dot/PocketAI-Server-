@@ -86,7 +86,10 @@ class _DashboardPageState extends State<DashboardPage> {
       if (!mounted) return;
       setState(() {
         _serverRunning = result?['running'] == true;
-        _serverAddress = '${result?['host'] ?? '127.0.0.1'}:${result?['port'] ?? 8080}';
+        _lanAddress = '${result?['lanAddress'] ?? ''}:${result?['port'] ?? 8080}';
+        _serverAddress = _lanAddress.startsWith(':') ? '127.0.0.1:${result?['port'] ?? 8080}' : _lanAddress;
+        _agentToken = result?['agentToken']?.toString() ?? _agentToken;
+        _agentCheck = result?['computerAgentConnected'] == true ? 'Computer Agent connected' : 'Waiting for Computer Agent';
         _serverError = result?['error']?.toString() ?? '';
       });
 
@@ -148,6 +151,7 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       client.connectionTimeout = const Duration(seconds: 3);
       final request = await client.getUrl(Uri.parse('http://127.0.0.1:8080/v1/models'));
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
       final response = await request.close().timeout(const Duration(seconds: 5));
       final body = await response.transform(utf8.decoder).join();
       if (!mounted) return;
@@ -177,7 +181,7 @@ class _DashboardPageState extends State<DashboardPage> {
         final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/models/load'));
         final payload = jsonEncode({'model': name});
         request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
         request.contentLength = utf8.encode(payload).length;
         request.write(payload);
         final response = await request.close().timeout(const Duration(minutes: 10));
