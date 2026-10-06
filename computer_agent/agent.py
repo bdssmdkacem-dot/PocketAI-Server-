@@ -1,71 +1,197 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse, json, platform, time, urllib.error, urllib.request
+
+import argparse
+import json
+import platform
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
 
 class PocketAIComputerAgent:
-    def __init__(self, phone: str, token: str, interval: float = 1.0) -> None:
-        self.phone, self.token, self.interval = phone.rstrip('/'), token, max(0.2, interval)
-        self.agent_name = platform.node() or 'computer'
+    def __init__(self, phone: str, token: str, interval: float = 0.7, headless: bool = False) -> None:
+        self.phone = phone.rstrip("/")
+        self.token = token
+        self.interval = max(0.2, interval)
+        self.agent_name = platform.node() or "computer"
+        self.headless = headless
+        self.browser = None
+        self.page = None
+        self._playwright = None
 
     def request(self, method, path, payload=None, timeout=8.0):
         data = json.dumps(payload).encode() if payload is not None else None
-        headers = {'Authorization': 'Bearer ' + self.token, 'Accept': 'application/json'}
-        if data is not None: headers['Content-Type'] = 'application/json'
+        headers = {"Authorization": "Bearer " + self.token, "Accept": "application/json"}
+        if data is not None:
+            headers["Content-Type"] = "application/json"
         req = urllib.request.Request(self.phone + path, data=data, headers=headers, method=method)
         return urllib.request.urlopen(req, timeout=timeout)
 
     def hello(self):
         try:
-            with self.request('GET', '/v1/agent/hello') as r: return r.status == 200
-        except (urllib.error.URLError, TimeoutError, OSError): return False
+            with self.request("GET", "/v1/agent/hello") as response:
+                return response.status == 200
+        except (urllib.error.URLError, TimeoutError, OSError):
+            return False
 
     def poll(self):
         try:
-            with self.request('GET', '/v1/agent/tasks/next', timeout=30) as r:
-                if r.status == 204: return None
-                return json.loads(r.read().decode())
+            with self.request("GET", "/v1/agent/tasks/next", timeout=30) as response:
+                if response.status == 204:
+                    return None
+                return json.loads(response.read().decode())
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
             return None
 
+    def browser_start(self):
+        if self.page is not None:
+            return
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError as exc:
+            raise RuntimeError(
+                "Browser actions require Playwright. Install with: "
+                "python -m pip install playwright && python -m playwright install chromium"
+            ) from exc
+        self._playwright = sync_playwright().start()
+        self.browser = self._playwright.chromium.launch(headless=self.headless)
+        context = self.browser.new_context(viewport={"width": 1440, "height": 900})
+        self.page = context.new_page()
+
+    def browser_stop(self):
+        if self.browser is not None:
+            self.browser.close()
+        self.browser = None
+        self.page = None
+        if self._playwright is not None:
+            self._playwright.stop()
+            self._playwright = None
+
+    def browser_read(self):
+        self.browser_start()
+        body = self.page.locator("body").inner_text(timeout=10000)
+        return {"url": self.page.url, "title": self.page.title(), "text": body[:12000]}
+
     def execute(self, task):
-        action = str(task.get('action', '')).strip()
-        args = task.get('args') or {}
-        if action == 'ping':
-            return {'id': str(task.get('id', 'unknown')), 'ok': True, 'action': 'ping',
-                    'computer': self.agent_name, 'platform': platform.platform(),
-                    'message': str(args.get('message', 'pong'))}
-        return {'id': str(task.get('id', 'unknown')), 'ok': False, 'action': action,
-                'error': 'action not enabled in LAN MVP'}
+        task_id = str(task.get("id", "unknown"))
+        action = str(task.get("action", "")).strip()
+        args = task.get("args") or {}
+
+        if action == "ping":
+            return {"id": task_id, "ok": True, "action": action, "computer": self.agent_name,
+                    "platform": platform.platform(), "message": str(args.get("message", "pong"))}
+
+        if action == "browser.open":
+            url = str(args.get("url", "")).strip()
+            if not url.startswith(("http://", "https://")):
+                return {"id": task_id, "ok": False, "action": action, "error": "url must use http:// or https://"}
+            self.browser_start()
+            self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            return {"id": task_id, "ok": True, "action": action, **self.browser_read()}
+
+        if action == "browser.search":
+            query = str(args.get("query", "")).strip()
+            if not query:
+                return {"id": task_id, "ok": False, "action": action, "error": "query is required"}
+            from urllib.parse import quote_plus
+            self.browser_start()
+            self.page.goto("https://www.google.com/search?q=" + quote_plus(query),
+                           wait_until="domcontentloaded", timeout=30000)
+            return {"id": task_id, "ok": True, "action": action, "query": query, **self.browser_read()}
+
+        if action == "browser.read":
+            return {"id": task_id, "ok": True, "action": action, **self.browser_read()}
+
+        if action == "browser.click":
+            selector = str(args.get("selector", "")).strip()
+            if not selector:
+                return {"id": task_id, "ok": False, "action": action, "error": "selector is required"}
+            self.browser_start()
+            self.page.locator(selector).first.click(timeout=15000)
+            self.page.wait_for_load_state("domcontentloaded", timeout=10000)
+            return {"id": task_id, "ok": True, "action": action, **self.browser_read()}
+
+        if action == "browser.type":
+            selector = str(args.get("selector", "")).strip()
+            text = str(args.get("text", ""))
+            if not selector:
+                return {"id": task_id, "ok": False, "action": action, "error": "selector is required"}
+            self.browser_start()
+            self.page.locator(selector).first.fill(text, timeout=15000)
+            return {"id": task_id, "ok": True, "action": action, "url": self.page.url}
+
+        if action == "browser.scroll":
+            amount = int(args.get("amount", 700))
+            self.browser_start()
+            self.page.mouse.wheel(0, amount)
+            self.page.wait_for_timeout(300)
+            return {"id": task_id, "ok": True, "action": action, **self.browser_read()}
+
+        if action == "browser.back":
+            self.browser_start()
+            self.page.go_back(wait_until="domcontentloaded", timeout=15000)
+            return {"id": task_id, "ok": True, "action": action, **self.browser_read()}
+
+        if action == "browser.forward":
+            self.browser_start()
+            self.page.go_forward(wait_until="domcontentloaded", timeout=15000)
+            return {"id": task_id, "ok": True, "action": action, **self.browser_read()}
+
+        if action == "browser.screenshot":
+            self.browser_start()
+            output = Path(str(args.get("path", "pocketai_screenshot.png"))).expanduser().resolve()
+            self.page.screenshot(path=str(output), full_page=True)
+            return {"id": task_id, "ok": True, "action": action, "path": str(output), "url": self.page.url}
+
+        if action == "browser.close":
+            self.browser_stop()
+            return {"id": task_id, "ok": True, "action": action}
+
+        return {"id": task_id, "ok": False, "action": action, "error": "action not enabled"}
 
     def report(self, result):
         try:
-            with self.request('POST', '/v1/agent/tasks/result', result, timeout=8) as r: r.read()
-        except (urllib.error.URLError, TimeoutError, OSError): pass
+            with self.request("POST", "/v1/agent/tasks/result", result, timeout=8) as response:
+                response.read()
+        except (urllib.error.URLError, TimeoutError, OSError):
+            pass
 
     def run(self):
-        print('PocketAI Computer Agent: ' + self.agent_name)
-        print('Phone: ' + self.phone)
+        print("PocketAI Computer Agent: " + self.agent_name)
+        print("Phone: " + self.phone)
+        print("Browser actions: open, search, read, click, type, scroll, back, forward, screenshot")
         connected = False
         while True:
             now = self.hello()
             if now != connected:
                 connected = now
-                print('Connected to PocketAI phone.' if connected else 'Phone connection lost.')
+                print("Connected to PocketAI phone." if connected else "Phone connection lost.")
             if connected:
                 task = self.poll()
                 if task:
-                    print('Task:', task.get('id'), 'action=', task.get('action'))
-                    result = self.execute(task)
+                    print("Task:", task.get("id"), "action=", task.get("action"))
+                    try:
+                        result = self.execute(task)
+                    except Exception as exc:
+                        result = {"id": str(task.get("id", "unknown")), "ok": False,
+                                  "action": str(task.get("action", "")),
+                                  "error": f"{type(exc).__name__}: {exc}"}
                     self.report(result)
-                    print('Result:', json.dumps(result, ensure_ascii=False))
+                    print("Result:", json.dumps(result, ensure_ascii=False))
             time.sleep(self.interval)
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument('--phone', required=True)
-    p.add_argument('--token', required=True)
-    p.add_argument('--interval', type=float, default=1.0)
-    a = p.parse_args()
-    PocketAIComputerAgent(a.phone, a.token, a.interval).run()
 
-if __name__ == '__main__': main()
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--phone", required=True)
+    parser.add_argument("--token", required=True)
+    parser.add_argument("--interval", type=float, default=0.7)
+    parser.add_argument("--headless", action="store_true", help="Run Chromium without showing a browser window")
+    args = parser.parse_args()
+    PocketAIComputerAgent(args.phone, args.token, args.interval, args.headless).run()
+
+
+if __name__ == "__main__":
+    main()
