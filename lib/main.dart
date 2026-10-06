@@ -344,6 +344,28 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _planComputerTask() async {
+    if (!_serverRunning || _agentToken.isEmpty) return;
+    final goal = 'ابحث في الويب عن أحدث أخبار الذكاء الاصطناعي اليوم واقرأ أول نتيجة مفيدة.';
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/plan'));
+      final payload = jsonEncode({'goal': goal});
+      request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer \$_agentToken');
+      request.contentLength = utf8.encode(payload).length;
+      request.write(payload);
+      final response = await request.close().timeout(const Duration(minutes: 3));
+      final body = await response.transform(utf8.decoder).join();
+      if (!mounted) return;
+      setState(() => _agentCheck = 'Planner HTTP \${response.statusCode}: \$body');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _agentCheck = 'Planner failed: \$error');
+    } finally {
+      client.close(force: true);
+    }
+  }
   Future<void> _queueComputerBrowserTest() async {
     if (!_serverRunning || _agentToken.isEmpty) return;
     final client = HttpClient();
@@ -488,6 +510,11 @@ class _DashboardPageState extends State<DashboardPage> {
                     onPressed: _serverRunning && _agentToken.isNotEmpty ? _queueComputerBrowserTest : null,
                     icon: const Icon(Icons.language),
                     label: const Text('Test computer browser search'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _serverRunning && _agentToken.isNotEmpty ? _planComputerTask : null,
+                    icon: const Icon(Icons.auto_awesome),
+                    label: const Text('Test local Agent Planner'),
                   ),
                   FilledButton.icon(
                     onPressed: _checkNativeEngine,
