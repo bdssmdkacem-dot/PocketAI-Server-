@@ -430,147 +430,218 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('PocketAI Server')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('LOCAL AI SERVER'),
-                  const SizedBox(height: 12),
-                  Text(
-                    _status == 'llama.cpp-linked' ? 'Native Ready' : _status,
-                    style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(_runtime),
-                  const SizedBox(height: 8),
-                  const Text('Flutter → MethodChannel → Kotlin → JNI → llama.cpp'),
-                ],
-              ),
-            ),
+    final width = MediaQuery.sizeOf(context).width;
+    final desktop = width >= 900;
+    final maxWidth = desktop ? 1500.0 : double.infinity;
+
+    final content = ListView(
+      padding: EdgeInsets.all(desktop ? 28 : 20),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('LOCAL AI SERVER', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Text(_status == 'llama.cpp-linked' ? 'Native Ready' : _status,
+                  style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(_runtime),
+              const SizedBox(height: 8),
+              const Text('Flutter → MethodChannel → Kotlin → JNI → llama.cpp'),
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                Chip(label: Text(_serverRunning ? 'Server running' : 'Server stopped')),
+                Chip(label: Text(_agentCheck.contains('connected') ? 'Agent connected' : 'Agent waiting')),
+              ]),
+            ]),
           ),
-          const SizedBox(height: 16),
+        ),
+        const SizedBox(height: 16),
+        if (desktop)
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: _desktopServerColumn()),
+            const SizedBox(width: 18),
+            Expanded(child: _desktopAgentColumn()),
+          ])
+        else ...[
           InfoTile(title: 'Device', value: _device),
           InfoTile(title: 'llama.cpp', value: _status),
           InfoTile(title: 'Version', value: _version),
           InfoTile(title: 'Model', value: _modelName),
-          FilledButton.icon(
-            onPressed: _serverRunning && !_modelActionBusy ? _importAndLoadModel : null,
-            icon: _modelActionBusy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.folder_open),
-            label: Text(_modelActionBusy ? 'Importing / loading model…' : 'Select & load GGUF model'),
-          ),
+          _modelControls(),
           InfoTile(title: 'Server', value: _serverRunning ? 'Running • $_serverAddress' : 'Stopped'),
-          if (_serverError.isNotEmpty)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.error_outline),
-                title: const Text('Server startup error'),
-                subtitle: Text(_serverError),
-              ),
-            ),
-          const SizedBox(height: 8),
-          FilledButton.icon(
-            onPressed: _serverActionBusy ? null : _startServer,
-            icon: _serverActionBusy
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : Icon(_serverRunning ? Icons.refresh : Icons.play_arrow),
-            label: Text(
-              _serverActionBusy
-                  ? 'Starting server…'
-                  : (_serverRunning ? 'Restart / verify server' : 'Start / retry server'),
-            ),
-          ),
-          InfoTile(title: 'API', value: 'http://$_serverAddress/v1'),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('COMPUTER AGENT', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  InfoTile(title: 'LAN address', value: _lanAddress),
-                  InfoTile(title: 'Agent connection', value: _agentCheck),
-                  InfoTile(title: 'Pairing token', value: _agentToken.isEmpty ? 'Not available' : _agentToken),
-                  const Text('Run the Computer Agent on the same Wi-Fi, then it will connect to this phone.'),
-                  const SizedBox(height: 8),
-                  FilledButton.icon(
-                    onPressed: _serverRunning && _agentToken.isNotEmpty ? _queueComputerPing : null,
-                    icon: const Icon(Icons.computer),
-                    label: const Text('Send test task to Computer Agent'),
-                  ),
-                  FilledButton.icon(
-                    onPressed: _serverRunning && _agentToken.isNotEmpty ? _queueComputerBrowserTest : null,
-                    icon: const Icon(Icons.language),
-                    label: const Text('Test computer browser search'),
-                  ),
-                  FilledButton.icon(
-                    onPressed: _serverRunning && _agentToken.isNotEmpty ? _planComputerTask : null,
-                    icon: const Icon(Icons.auto_awesome),
-                    label: const Text('Test local Agent Planner'),
-                  ),
-                  FilledButton.icon(
-                    onPressed: _checkNativeEngine,
-                    icon: const Icon(Icons.sync),
-                    label: const Text('Refresh Agent connection'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
+          _agentPanel(),
+        ],
+        if (desktop) ...[
+          const SizedBox(height: 18),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: _desktopAiColumn()),
+            const SizedBox(width: 18),
+            Expanded(child: _desktopDiagnosticsColumn()),
+          ]),
+        ] else ...[
           InfoTile(title: 'Health', value: _apiCheck),
-          FilledButton.icon(
-            onPressed: _serverRunning ? _checkApi : null,
-            icon: const Icon(Icons.health_and_safety_outlined),
-            label: const Text('Test /health'),
-          ),
+          FilledButton.icon(onPressed: _serverRunning ? _checkApi : null,
+              icon: const Icon(Icons.health_and_safety_outlined), label: const Text('Test /health')),
           InfoTile(title: 'Models API', value: _modelsCheck),
-          FilledButton.icon(
-            onPressed: _serverRunning ? _checkModels : null,
-            icon: const Icon(Icons.view_list_outlined),
-            label: const Text('Test /v1/models'),
-          ),
+          FilledButton.icon(onPressed: _serverRunning ? _checkModels : null,
+              icon: const Icon(Icons.view_list_outlined), label: const Text('Test /v1/models')),
           InfoTile(title: 'Chat completion', value: _chatCheck),
-          FilledButton.icon(
-            onPressed: _serverRunning && !_chatBusy ? () => _testChat('Hello, who are you?') : null,
-            icon: _chatBusy
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.chat_outlined),
-            label: Text(_chatBusy ? 'Running inference…' : 'Test English chat'),
-          ),
-          FilledButton.icon(
-            onPressed: _serverRunning && !_chatBusy ? () => _testChat('من أنت؟ ما اسم النموذج الذي تعمل به؟ وهل تستطيع الإجابة باللغة العربية؟') : null,
-            icon: const Icon(Icons.translate),
-            label: const Text('Test Arabic chat'),
-          ),
+          FilledButton.icon(onPressed: _serverRunning && !_chatBusy ? () => _testChat('Hello, who are you?') : null,
+              icon: const Icon(Icons.chat_outlined), label: const Text('Test English chat')),
+          FilledButton.icon(onPressed: _serverRunning && !_chatBusy ? () => _testChat('من أنت؟ ما اسم النموذج الذي تعمل به؟ وهل تستطيع الإجابة باللغة العربية؟') : null,
+              icon: const Icon(Icons.translate), label: const Text('Test Arabic chat')),
           InfoTile(title: 'Warm-up', value: _warmupCheck),
           InfoTile(title: 'Inference benchmark', value: _benchmarkCheck),
-          FilledButton.icon(
-            onPressed: _serverRunning && !_benchmarkBusy ? _runInferenceBenchmark : null,
-            icon: _benchmarkBusy
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.speed),
-            label: Text(_benchmarkBusy ? 'Benchmarking…' : 'Run English vs Arabic controlled benchmark'),
-          ),
+          FilledButton.icon(onPressed: _serverRunning && !_benchmarkBusy ? _runInferenceBenchmark : null,
+              icon: _benchmarkBusy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.speed),
+              label: Text(_benchmarkBusy ? 'Benchmarking…' : 'Run English vs Arabic controlled benchmark')),
           const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
-          const SizedBox(height: 8),
-          FilledButton.icon(
-            onPressed: _checkNativeEngine,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Refresh device & native status'),
-          ),
+          FilledButton.icon(onPressed: _checkNativeEngine,
+              icon: const Icon(Icons.refresh), label: const Text('Refresh device & native status')),
         ],
+      ],
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(desktop ? 'PocketAI Command Center' : 'PocketAI Server'),
+        actions: [
+          if (desktop) ...[
+            Chip(label: Text(_serverRunning ? 'Server ✓' : 'Server offline')),
+            const SizedBox(width: 8),
+            Chip(label: Text(_agentCheck.contains('connected') ? 'Agent ✓' : 'Agent waiting')),
+            const SizedBox(width: 12),
+          ],
+          IconButton(tooltip: 'Refresh', onPressed: _checkNativeEngine, icon: const Icon(Icons.refresh)),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: desktop
+              ? Row(children: [
+                  NavigationRail(
+                    selectedIndex: 0,
+                    labelType: NavigationRailLabelType.all,
+                    destinations: const [
+                      NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), label: Text('Dashboard')),
+                      NavigationRailDestination(icon: Icon(Icons.memory_outlined), label: Text('AI Engine')),
+                      NavigationRailDestination(icon: Icon(Icons.computer_outlined), label: Text('Computer Agent')),
+                      NavigationRailDestination(icon: Icon(Icons.monitor_heart_outlined), label: Text('Diagnostics')),
+                    ],
+                  ),
+                  const VerticalDivider(width: 1),
+                  Expanded(child: content),
+                ])
+              : content,
+        ),
       ),
     );
   }
+
+  Widget _modelControls() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    FilledButton.icon(
+      onPressed: _serverRunning && !_modelActionBusy ? _importAndLoadModel : null,
+      icon: _modelActionBusy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.folder_open),
+      label: Text(_modelActionBusy ? 'Importing / loading model…' : 'Select & load GGUF model'),
+    ),
+    FilledButton.icon(
+      onPressed: _serverActionBusy ? null : _startServer,
+      icon: _serverActionBusy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow),
+      label: Text(_serverRunning ? 'Restart / verify server' : 'Start / retry server'),
+    ),
+  ]);
+
+  Widget _desktopServerColumn() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('AI ENGINE', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        InfoTile(title: 'Device', value: _device),
+        InfoTile(title: 'llama.cpp', value: _status),
+        InfoTile(title: 'Version', value: _version),
+        InfoTile(title: 'Model', value: _modelName),
+        _modelControls(),
+        InfoTile(title: 'Server', value: _serverRunning ? 'Running • $_serverAddress' : 'Stopped'),
+        InfoTile(title: 'API', value: 'http://$_serverAddress/v1'),
+      ]),
+    ),
+  );
+
+  Widget _desktopAgentColumn() => _agentPanel();
+
+  Widget _agentPanel() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('COMPUTER AGENT', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        InfoTile(title: 'LAN address', value: _lanAddress),
+        InfoTile(title: 'Agent connection', value: _agentCheck),
+        InfoTile(title: 'Pairing token', value: _agentToken.isEmpty ? 'Not available' : _agentToken),
+        const Text('The phone is the local AI brain; the paired computer executes approved tasks over LAN.'),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.icon(onPressed: _serverRunning && _agentToken.isNotEmpty ? _queueComputerPing : null,
+              icon: const Icon(Icons.computer), label: const Text('Ping')),
+          FilledButton.icon(onPressed: _serverRunning && _agentToken.isNotEmpty ? _queueComputerBrowserTest : null,
+              icon: const Icon(Icons.language), label: const Text('Browser search')),
+          FilledButton.icon(onPressed: _serverRunning && _agentToken.isNotEmpty ? _planComputerTask : null,
+              icon: const Icon(Icons.auto_awesome), label: const Text('Plan task')),
+          OutlinedButton.icon(onPressed: _checkNativeEngine,
+              icon: const Icon(Icons.sync), label: const Text('Refresh')),
+        ]),
+      ]),
+    ),
+  );
+
+  Widget _desktopAiColumn() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('AI PLAYGROUND', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        InfoTile(title: 'Chat completion', value: _chatCheck),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.icon(onPressed: _serverRunning && !_chatBusy ? () => _testChat('Hello, who are you?') : null,
+              icon: const Icon(Icons.chat_outlined), label: const Text('English')),
+          FilledButton.icon(onPressed: _serverRunning && !_chatBusy ? () => _testChat('من أنت؟ ما اسم النموذج الذي تعمل به؟ وهل تستطيع الإجابة باللغة العربية؟') : null,
+              icon: const Icon(Icons.translate), label: const Text('Arabic')),
+        ]),
+        const SizedBox(height: 18),
+        const Divider(),
+        const SizedBox(height: 8),
+        const Text('BENCHMARK', style: TextStyle(fontWeight: FontWeight.bold)),
+        InfoTile(title: 'Warm-up', value: _warmupCheck),
+        InfoTile(title: 'Inference', value: _benchmarkCheck),
+        FilledButton.icon(onPressed: _serverRunning && !_benchmarkBusy ? _runInferenceBenchmark : null,
+            icon: _benchmarkBusy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.speed),
+            label: Text(_benchmarkBusy ? 'Benchmarking…' : 'Run benchmark')),
+      ]),
+    ),
+  );
+
+  Widget _desktopDiagnosticsColumn() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('DIAGNOSTICS', style: TextStyle(fontWeight: FontWeight.bold)),
+        InfoTile(title: 'Health', value: _apiCheck),
+        InfoTile(title: 'Models API', value: _modelsCheck),
+        if (_serverError.isNotEmpty) InfoTile(title: 'Server error', value: _serverError),
+        FilledButton.icon(onPressed: _serverRunning ? _checkApi : null,
+            icon: const Icon(Icons.health_and_safety_outlined), label: const Text('Test health')),
+        FilledButton.icon(onPressed: _serverRunning ? _checkModels : null,
+            icon: const Icon(Icons.view_list_outlined), label: const Text('Test models')),
+        const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
+      ]),
+    ),
+  );
+
 }
 
 class InfoTile extends StatelessWidget {
