@@ -491,6 +491,16 @@ private class LocalAiServer(
             }
         }
 
+        if (path == "/v1/agent/tasks/results" && method == "GET") {
+            val results = JSONArray()
+            while (true) {
+                val result = completedTasks.poll() ?: break
+                results.put(result)
+            }
+            return "200 OK" to JSONObject().put("results", results).toString()
+        }
+
+
         if (method == "POST" && path == "/v1/chat/completions") {
             return try {
                 if (!nativeAi.isModelLoaded()) {
