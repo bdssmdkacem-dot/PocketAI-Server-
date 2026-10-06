@@ -62,26 +62,26 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _submitAgentTask() async {
     final goal = _agentTaskController.text.trim();
     if (goal.isEmpty || !_serverRunning || _agentToken.isEmpty) return;
-    setState(() => _agentTaskLog.insert(0, 'Planning: ' + goal));
+    setState(() => _agentTaskLog.insert(0, 'Planning: $goal'));
     final client = HttpClient();
     try {
       final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/plan'));
       final payload = jsonEncode({'goal': goal});
       request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + _agentToken);
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
       request.contentLength = utf8.encode(payload).length;
       request.write(payload);
       final response = await request.close().timeout(const Duration(minutes: 3));
       final body = await response.transform(utf8.decoder).join();
       if (!mounted) return;
       setState(() {
-        _agentCheck = 'Task planned • HTTP ' + response.statusCode.toString();
-        _agentTaskLog.insert(0, 'Planner HTTP ' + response.statusCode.toString() + ': ' + body);
+        _agentCheck = 'Task planned • HTTP ${response.statusCode}';
+        _agentTaskLog.insert(0, 'Planner HTTP ${response.statusCode}: $body');
       });
     } catch (error) {
       if (mounted) {
         setState(() {
-          _agentCheck = 'Task failed: ' + error.toString();
+          _agentCheck = 'Task failed: $error';
           _agentTaskLog.insert(0, 'Task failed: ' + error.toString());
         });
       }
