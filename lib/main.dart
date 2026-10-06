@@ -352,13 +352,13 @@ class _DashboardPageState extends State<DashboardPage> {
       final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/plan'));
       final payload = jsonEncode({'goal': goal});
       request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer \$_agentToken');
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
       request.contentLength = utf8.encode(payload).length;
       request.write(payload);
       final response = await request.close().timeout(const Duration(minutes: 3));
       final body = await response.transform(utf8.decoder).join();
       if (!mounted) return;
-      setState(() => _agentCheck = 'Planner HTTP \${response.statusCode}: \$body');
+      setState(() => _agentCheck = 'Planner HTTP ${response.statusCode}: $body');
     } catch (error) {
       if (!mounted) return;
       setState(() => _agentCheck = 'Planner failed: \$error');
