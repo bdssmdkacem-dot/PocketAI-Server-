@@ -53,7 +53,49 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _chatBusy = false;
   bool _benchmarkBusy = false;
   String _benchmarkCheck = 'Not run';
+  int _desktopSection = 0;
+  final TextEditingController _agentTaskController = TextEditingController();
+  final FocusNode _agentTaskFocus = FocusNode();
+  final List<String> _agentTaskLog = <String>[];
   String _warmupCheck = 'Not measured';
+
+  Future<void> _submitAgentTask() async {
+    final goal = _agentTaskController.text.trim();
+    if (goal.isEmpty || !_serverRunning || _agentToken.isEmpty) return;
+    setState(() => _agentTaskLog.insert(0, 'Planning: ' + goal));
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/plan'));
+      final payload = jsonEncode({'goal': goal});
+      request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + _agentToken);
+      request.contentLength = utf8.encode(payload).length;
+      request.write(payload);
+      final response = await request.close().timeout(const Duration(minutes: 3));
+      final body = await response.transform(utf8.decoder).join();
+      if (!mounted) return;
+      setState(() {
+        _agentCheck = 'Task planned • HTTP ' + response.statusCode.toString();
+        _agentTaskLog.insert(0, 'Planner HTTP ' + response.statusCode.toString() + ': ' + body);
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _agentCheck = 'Task failed: ' + error.toString();
+          _agentTaskLog.insert(0, 'Task failed: ' + error.toString());
+        });
+      }
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _agentTaskController.dispose();
+    _agentTaskFocus.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -504,6 +546,35 @@ class _DashboardPageState extends State<DashboardPage> {
       ],
     );
 
+    final desktopWorkspace = CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.key1, control: true): () => setState(() => _desktopSection = 0),
+        const SingleActivator(LogicalKeyboardKey.key2, control: true): () => setState(() => _desktopSection = 1),
+        const SingleActivator(LogicalKeyboardKey.key3, control: true): () => setState(() => _desktopSection = 2),
+        const SingleActivator(LogicalKeyboardKey.key4, control: true): () => setState(() => _desktopSection = 3),
+        const SingleActivator(LogicalKeyboardKey.keyL, control: true): () => _agentTaskFocus.requestFocus(),
+        const SingleActivator(LogicalKeyboardKey.enter, control: true): () => _submitAgentTask(),
+      },
+      child: Focus(
+        autofocus: desktop,
+        child: Row(children: [
+          NavigationRail(
+            selectedIndex: _desktopSection,
+            labelType: NavigationRailLabelType.all,
+            onDestinationSelected: (index) => setState(() => _desktopSection = index),
+            destinations: const [
+              NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), label: Text('Dashboard')),
+              NavigationRailDestination(icon: Icon(Icons.memory_outlined), label: Text('AI Engine')),
+              NavigationRailDestination(icon: Icon(Icons.computer_outlined), label: Text('Computer Agent')),
+              NavigationRailDestination(icon: Icon(Icons.monitor_heart_outlined), label: Text('Diagnostics')),
+            ],
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(child: _desktopSectionContent()),
+        ]),
+      ),
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(desktop ? 'PocketAI Command Center' : 'PocketAI Server'),
@@ -521,26 +592,107 @@ class _DashboardPageState extends State<DashboardPage> {
       body: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
-          child: desktop
-              ? Row(children: [
-                  NavigationRail(
-                    selectedIndex: 0,
-                    labelType: NavigationRailLabelType.all,
-                    destinations: const [
-                      NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), label: Text('Dashboard')),
-                      NavigationRailDestination(icon: Icon(Icons.memory_outlined), label: Text('AI Engine')),
-                      NavigationRailDestination(icon: Icon(Icons.computer_outlined), label: Text('Computer Agent')),
-                      NavigationRailDestination(icon: Icon(Icons.monitor_heart_outlined), label: Text('Diagnostics')),
-                    ],
-                  ),
-                  const VerticalDivider(width: 1),
-                  Expanded(child: content),
-                ])
-              : content,
+          child: desktop ? desktopWorkspace : content,
         ),
       ),
     );
   }
+
+  Widget _desktopSectionContent() {
+    switch (_desktopSection) {
+      case 1:
+        return ListView(padding: const EdgeInsets.all(28), children: [_desktopServerColumn(), const SizedBox(height: 18), _desktopAiColumn()]);
+      case 2:
+        return ListView(padding: const EdgeInsets.all(28), children: [_agentConsole(), const SizedBox(height: 18), _desktopAgentColumn()]);
+      case 3:
+        return ListView(padding: const EdgeInsets.all(28), children: [_desktopDiagnosticsColumn()]);
+      default:
+        return ListView(padding: const EdgeInsets.all(28), children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: _desktopServerColumn()),
+            const SizedBox(width: 18),
+            Expanded(child: _agentConsole()),
+          ]),
+          const SizedBox(height: 18),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: _desktopAiColumn()),
+            const SizedBox(width: 18),
+            Expanded(child: _desktopDiagnosticsColumn()),
+          ]),
+        ]);
+    }
+  }
+
+  Widget _agentConsole() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.terminal),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('AGENT TASK CONSOLE', style: TextStyle(fontWeight: FontWeight.bold))),
+          Tooltip(message: 'Ctrl+L focuses the task field', child: IconButton(onPressed: () => _agentTaskFocus.requestFocus(), icon: const Icon(Icons.keyboard))),
+        ]),
+        const SizedBox(height: 6),
+        const Text('Describe what you want the paired computer to do.'),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _agentTaskController,
+          focusNode: _agentTaskFocus,
+          minLines: 2,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            hintText: 'Open the browser and search for the latest AI news…',
+            prefixIcon: Icon(Icons.task_alt),
+          ),
+          onSubmitted: (_) => _submitAgentTask(),
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.icon(
+            onPressed: _serverRunning && _agentToken.isNotEmpty ? _submitAgentTask : null,
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Run task'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () {
+              _agentTaskController.clear();
+              _agentTaskFocus.requestFocus();
+            },
+            icon: const Icon(Icons.clear),
+            label: const Text('Clear'),
+          ),
+          Chip(label: Text(_agentCheck)),
+        ]),
+        const SizedBox(height: 14),
+        const Divider(),
+        const Text('TASK LOG', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 6),
+        if (_agentTaskLog.isEmpty)
+          const Text('No tasks yet. Connect the Computer Agent to begin.')
+        else
+          ..._agentTaskLog.map((entry) => MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onSecondaryTap: () => showMenu<String>(
+                context: context,
+                position: const RelativeRect.fromLTRB(120, 120, 120, 120),
+                items: const [PopupMenuItem(value: 'dismiss', child: Text('Task log entry'))],
+              ),
+              child: ListTile(
+                dense: true,
+                leading: const Icon(Icons.chevron_right),
+                title: Text(entry),
+              ),
+            ),
+          )),
+        const SizedBox(height: 8),
+        const Text('Ctrl+1 Dashboard • Ctrl+2 AI • Ctrl+3 Agent • Ctrl+4 Diagnostics • Ctrl+L task field • Ctrl+Enter submit'),
+      ]),
+    ),
+  );
+
 
   Widget _modelControls() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     FilledButton.icon(
