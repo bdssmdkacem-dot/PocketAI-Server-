@@ -294,7 +294,7 @@ private class LocalAiServer(
             } catch (e: SecurityException) {
                 startupError = "cannot bind LAN server to 0.0.0.0:$port: SecurityException: ${e.message ?: "operation not permitted"}"
             } catch (e: SocketException) {
-                startupError = "cannot bind local server to 127.0.0.1:$port: SocketException: ${e.message ?: "socket operation failed"}"
+                startupError = "cannot bind LAN server to 0.0.0.0:$port: SocketException: ${e.message ?: "socket operation failed"}"
             } catch (e: Throwable) {
                 startupError = "cannot start LAN server on 0.0.0.0:$port: ${e.javaClass.simpleName}: ${e.message ?: "server startup failed"}"
             } finally {
@@ -340,6 +340,19 @@ private class LocalAiServer(
                 }
             }
             if (contentLength < 0 || contentLength > 10 * 1024 * 1024) return
+            if (!isAuthorized(path, authorization)) {
+                val payload = JSONObject().put("error", "unauthorized").toString()
+                val bytes = payload.toByteArray(Charsets.UTF_8)
+                val response = "HTTP/1.1 401 Unauthorized\\r\\n" +
+                    "Content-Type: application/json; charset=utf-8\\r\\n" +
+                    "Content-Length: " + bytes.size + "\\r\\n" +
+                    "Connection: close\\r\\n\\r\\n"
+                val out = c.getOutputStream()
+                out.write(response.toByteArray(Charsets.US_ASCII))
+                out.write(bytes)
+                out.flush()
+                return
+            }
             val bodyBytes = ByteArray(contentLength)
             var read = 0
             while (read < contentLength) {
