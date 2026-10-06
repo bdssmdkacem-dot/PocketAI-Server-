@@ -448,7 +448,17 @@ private class LocalAiServer(
                 .put("capabilities", JSONArray()
                     .put("task.poll")
                     .put("task.result")
-                    .put("ping"))
+                    .put("ping")
+                    .put("browser.open")
+                    .put("browser.search")
+                    .put("browser.read")
+                    .put("browser.click")
+                    .put("browser.type")
+                    .put("browser.scroll")
+                    .put("browser.back")
+                    .put("browser.forward")
+                    .put("browser.screenshot")
+                    .put("browser.close"))
                 .toString()
         }
 
