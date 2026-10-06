@@ -181,6 +181,7 @@ class _DashboardPageState extends State<DashboardPage> {
         final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/models/load'));
         final payload = jsonEncode({'model': name});
         request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
         request.contentLength = utf8.encode(payload).length;
         request.write(payload);
@@ -217,6 +218,7 @@ class _DashboardPageState extends State<DashboardPage> {
         'temperature': 0.7,
       });
       request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
       request.contentLength = utf8.encode(payload).length;
       request.write(payload);
       final response = await request.close().timeout(const Duration(minutes: 5));
@@ -267,6 +269,7 @@ class _DashboardPageState extends State<DashboardPage> {
         'temperature': 0.0,
       });
       request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
       request.contentLength = utf8.encode(payload).length;
       request.write(payload);
       final response = await request.close().timeout(const Duration(minutes: 3));
@@ -328,6 +331,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final payload = jsonEncode({'action': 'ping', 'args': {'message': 'Hello from PocketAI phone'}});
       request.headers.contentType = ContentType.json;
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
       request.contentLength = utf8.encode(payload).length;
       request.write(payload);
       final response = await request.close().timeout(const Duration(seconds: 5));
@@ -342,6 +346,30 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _queueComputerBrowserTest() async {
+    if (!_serverRunning || _agentToken.isEmpty) return;
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/tasks'));
+      final payload = jsonEncode({
+        'action': 'browser.search',
+        'args': {'query': 'PocketAI local computer agent'},
+      });
+      request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
+      request.contentLength = utf8.encode(payload).length;
+      request.write(payload);
+      final response = await request.close().timeout(const Duration(seconds: 5));
+      final body = await response.transform(utf8.decoder).join();
+      if (!mounted) return;
+      setState(() => _agentCheck = 'Browser search queued: HTTP ${response.statusCode} $body');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _agentCheck = 'Browser task failed: $error');
+    } finally {
+      client.close(force: true);
+    }
+  }
   Future<void> _checkNativeEngine() async {
     try {
       final result = await _native.invokeMethod<Map<dynamic, dynamic>>('status');
@@ -457,6 +485,11 @@ class _DashboardPageState extends State<DashboardPage> {
                     onPressed: _serverRunning && _agentToken.isNotEmpty ? _queueComputerPing : null,
                     icon: const Icon(Icons.computer),
                     label: const Text('Send test task to Computer Agent'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _serverRunning && _agentToken.isNotEmpty ? _queueComputerBrowserTest : null,
+                    icon: const Icon(Icons.language),
+                    label: const Text('Test computer browser search'),
                   ),
                   FilledButton.icon(
                     onPressed: _checkNativeEngine,
