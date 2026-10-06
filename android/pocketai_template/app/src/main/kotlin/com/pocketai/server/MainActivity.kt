@@ -511,6 +511,42 @@ private class LocalAiServer(
         }
 
 
+        if (method == "POST" && path == "/v1/agent/plan") {
+            return try {
+                if (!nativeAi.isModelLoaded()) {
+                    "409 Conflict" to JSONObject().put("error", "no model loaded").toString()
+                } else {
+                    val goal = JSONObject(body).optString("goal").trim()
+                    if (goal.isBlank()) {
+                        "400 Bad Request" to JSONObject().put("error", "goal is required").toString()
+                    } else {
+                        val plannerPrompt = "You are PocketAI browser task planner. Convert the user goal into a short JSON plan. Allowed actions only: browser.search, browser.open, browser.read, browser.click, browser.type, browser.scroll, browser.back, browser.forward, browser.screenshot. Return ONLY valid JSON: {\"steps\":[{\"action\":\"browser.search\",\"args\":{\"query\":\"...\"}}]}. Maximum 8 steps. Do not invent selectors unless explicitly provided. User goal: " + goal
+                        val response = nativeAi.generate(plannerPrompt, 256, 0.0f)
+                        if (response.startsWith("ERROR:")) {
+                            "500 Internal Server Error" to JSONObject().put("error", response).toString()
+                        } else {
+                            val jsonText = response.replace("```json", "").replace("```", "").trim()
+                            val parsed = JSONObject(jsonText)
+                            val steps = parsed.optJSONArray("steps") ?: JSONArray()
+                            if (steps.length() > 8) {
+                                "400 Bad Request" to JSONObject().put("error", "plan exceeds maximum of 8 steps").toString()
+                            } else {
+                                var valid = true
+                                val allowed = setOf("browser.search","browser.open","browser.read","browser.click","browser.type","browser.scroll","browser.back","browser.forward","browser.screenshot")
+                                for (i in 0 until steps.length()) {
+                                    val action = steps.optJSONObject(i)?.optString("action").orEmpty()
+                                    if (!allowed.contains(action)) { valid = false; break }
+                                }
+                                if (!valid) "400 Bad Request" to JSONObject().put("error", "plan contains an unsupported browser action").toString()
+                                else "200 OK" to JSONObject().put("goal", goal).put("plan", parsed).toString()
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                "400 Bad Request" to JSONObject().put("error", "invalid planner output: ${e.message ?: "unknown"}").toString()
+            }
+        }
         if (method == "POST" && path == "/v1/chat/completions") {
             return try {
                 if (!nativeAi.isModelLoaded()) {
