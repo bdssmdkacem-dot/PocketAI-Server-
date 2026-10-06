@@ -548,10 +548,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
     final desktopWorkspace = CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.key1, control: true): () => setState(() => _desktopSection = 0),
-        const SingleActivator(LogicalKeyboardKey.key2, control: true): () => setState(() => _desktopSection = 1),
-        const SingleActivator(LogicalKeyboardKey.key3, control: true): () => setState(() => _desktopSection = 2),
-        const SingleActivator(LogicalKeyboardKey.key4, control: true): () => setState(() => _desktopSection = 3),
+        const SingleActivator(LogicalKeyboardKey.digit1, control: true): () => setState(() => _desktopSection = 0),
+        const SingleActivator(LogicalKeyboardKey.digit2, control: true): () => setState(() => _desktopSection = 1),
+        const SingleActivator(LogicalKeyboardKey.digit3, control: true): () => setState(() => _desktopSection = 2),
+        const SingleActivator(LogicalKeyboardKey.digit4, control: true): () => setState(() => _desktopSection = 3),
         const SingleActivator(LogicalKeyboardKey.keyL, control: true): () => _agentTaskFocus.requestFocus(),
       },
       child: Focus(
