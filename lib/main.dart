@@ -553,7 +553,6 @@ class _DashboardPageState extends State<DashboardPage> {
         const SingleActivator(LogicalKeyboardKey.key3, control: true): () => setState(() => _desktopSection = 2),
         const SingleActivator(LogicalKeyboardKey.key4, control: true): () => setState(() => _desktopSection = 3),
         const SingleActivator(LogicalKeyboardKey.keyL, control: true): () => _agentTaskFocus.requestFocus(),
-        const SingleActivator(LogicalKeyboardKey.enter, control: true): () => _submitAgentTask(),
       },
       child: Focus(
         autofocus: desktop,
