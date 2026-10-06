@@ -182,7 +182,6 @@ class _DashboardPageState extends State<DashboardPage> {
         final payload = jsonEncode({'model': name});
         request.headers.contentType = ContentType.json;
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
-        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
         request.contentLength = utf8.encode(payload).length;
         request.write(payload);
         final response = await request.close().timeout(const Duration(minutes: 10));
@@ -330,7 +329,6 @@ class _DashboardPageState extends State<DashboardPage> {
       final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/tasks'));
       final payload = jsonEncode({'action': 'ping', 'args': {'message': 'Hello from PocketAI phone'}});
       request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
       request.contentLength = utf8.encode(payload).length;
       request.write(payload);
