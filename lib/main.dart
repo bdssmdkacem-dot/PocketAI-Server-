@@ -82,7 +82,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (mounted) {
         setState(() {
           _agentCheck = 'Task failed: $error';
-          _agentTaskLog.insert(0, 'Task failed: ' + error.toString());
+          _agentTaskLog.insert(0, 'Task failed: $error);
         });
       }
     } finally {
