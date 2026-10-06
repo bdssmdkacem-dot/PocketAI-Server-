@@ -40,6 +40,9 @@ class _DashboardPageState extends State<DashboardPage> {
   String _device = '—';
   bool _serverRunning = false;
   String _serverAddress = '127.0.0.1:8080';
+  String _lanAddress = 'Not available';
+  String _agentToken = '';
+  String _agentCheck = 'Not connected';
   String _serverError = '';
   bool _serverActionBusy = false;
   String _apiCheck = 'Not checked';
@@ -174,6 +177,7 @@ class _DashboardPageState extends State<DashboardPage> {
         final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/models/load'));
         final payload = jsonEncode({'model': name});
         request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
         request.contentLength = utf8.encode(payload).length;
         request.write(payload);
         final response = await request.close().timeout(const Duration(minutes: 10));
@@ -312,6 +316,28 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _queueComputerPing() async {
+    if (!_serverRunning || _agentToken.isEmpty) return;
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/tasks'));
+      final payload = jsonEncode({'action': 'ping', 'args': {'message': 'Hello from PocketAI phone'}});
+      request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
+      request.contentLength = utf8.encode(payload).length;
+      request.write(payload);
+      final response = await request.close().timeout(const Duration(seconds: 5));
+      final body = await response.transform(utf8.decoder).join();
+      if (!mounted) return;
+      setState(() => _agentCheck = 'Ping task queued: HTTP ${response.statusCode} $body');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _agentCheck = 'Agent task failed: $error');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   Future<void> _checkNativeEngine() async {
     try {
       final result = await _native.invokeMethod<Map<dynamic, dynamic>>('status');
@@ -326,7 +352,10 @@ class _DashboardPageState extends State<DashboardPage> {
         _runtime = result?['runtime']?.toString() ?? 'Unknown';
         _device = '${device?['manufacturer'] ?? ''} ${device?['model'] ?? ''} • Android API ${device?['androidApi'] ?? '?'} • ABI $abis • RAM $ramGb';
         _serverRunning = result?['serverRunning'] == true;
-        _serverAddress = '${result?['serverHost'] ?? '127.0.0.1'}:${result?['serverPort'] ?? 8080}';
+        _lanAddress = '${result?['lanAddress'] ?? ''}:${result?['serverPort'] ?? 8080}';
+        _serverAddress = _lanAddress.startsWith(':') ? '127.0.0.1:${result?['serverPort'] ?? 8080}' : _lanAddress;
+        _agentToken = result?['agentToken']?.toString() ?? _agentToken;
+        _agentCheck = result?['computerAgentConnected'] == true ? 'Computer Agent connected' : 'Waiting for Computer Agent';
         _serverError = result?['serverError']?.toString() ?? '';
         _modelName = result?['model']?.toString().isNotEmpty == true ? result!['model'].toString() : 'No model loaded';
       });
@@ -406,6 +435,35 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           InfoTile(title: 'API', value: 'http://$_serverAddress/v1'),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('COMPUTER AGENT', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  InfoTile(title: 'LAN address', value: _lanAddress),
+                  InfoTile(title: 'Agent connection', value: _agentCheck),
+                  InfoTile(title: 'Pairing token', value: _agentToken.isEmpty ? 'Not available' : _agentToken),
+                  const Text('Run the Computer Agent on the same Wi-Fi, then it will connect to this phone.'),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    onPressed: _serverRunning && _agentToken.isNotEmpty ? _queueComputerPing : null,
+                    icon: const Icon(Icons.computer),
+                    label: const Text('Send test task to Computer Agent'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _checkNativeEngine,
+                    icon: const Icon(Icons.sync),
+                    label: const Text('Refresh Agent connection'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
           InfoTile(title: 'Health', value: _apiCheck),
           FilledButton.icon(
             onPressed: _serverRunning ? _checkApi : null,
