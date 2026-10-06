@@ -3,6 +3,8 @@ package com.pocketai.server
 import android.app.ActivityManager
 import android.content.Intent
 import android.net.Uri
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -16,7 +18,11 @@ import java.net.Socket
 import java.net.SocketException
 import java.net.BindException
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
+import java.security.SecureRandom
+import android.util.Base64
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentLinkedQueue
 
 class MainActivity : FlutterActivity() {
     private val channelName = "pocketai/native"
@@ -27,6 +33,37 @@ class MainActivity : FlutterActivity() {
     private var pendingModelPicker: MethodChannel.Result? = null
     private val modelPickerRequestCode = 1001
     private val executorForModelImport = Executors.newSingleThreadExecutor()
+    private val prefs: SharedPreferences by lazy { getSharedPreferences("pocketai_agent", Context.MODE_PRIVATE) }
+    private var agentToken: String = ""
+
+    private fun getAgentToken(): String {
+        if (agentToken.isNotBlank()) return agentToken
+        agentToken = prefs.getString("token", "") ?: ""
+        if (agentToken.isBlank()) {
+            val bytes = ByteArray(32)
+            SecureRandom().nextBytes(bytes)
+            agentToken = Base64.encodeToString(bytes, Base64.NO_WRAP or Base64.NO_PADDING or Base64.URL_SAFE)
+            prefs.edit().putString("token", agentToken).apply()
+        }
+        return agentToken
+    }
+
+    private fun lanIpv4Address(): String {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                if (!networkInterface.isUp || networkInterface.isLoopback) continue
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    val host = address.hostAddress ?: continue
+                    if (!address.isLoopbackAddress && !host.contains(":")) return host
+                }
+            }
+        } catch (_: Throwable) {}
+        return ""
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -66,7 +103,7 @@ class MainActivity : FlutterActivity() {
         } catch (_: Throwable) {}
         server = null
         try {
-            server = LocalAiServer(filesDir, nativeAi).also { it.start() }
+            server = LocalAiServer(filesDir, nativeAi, getAgentToken()).also { it.start() }
             serverInitError = null
         } catch (t: Throwable) {
             serverInitError = "${t.javaClass.simpleName}: ${t.message ?: "server initialization failed"}"
@@ -85,8 +122,11 @@ class MainActivity : FlutterActivity() {
             "model" to (ai?.loadedModelName().orEmpty()),
             "device" to deviceCapabilities(),
             "serverRunning" to (server?.isRunning() == true),
-            "serverHost" to "127.0.0.1",
+            "serverHost" to (server?.host ?: "127.0.0.1"),
             "serverPort" to 8080,
+            "lanAddress" to lanIpv4Address(),
+            "agentToken" to getAgentToken(),
+            "computerAgentConnected" to (server?.computerAgentConnected() == true),
             "serverError" to (serverInitError ?: server?.error().orEmpty()),
         )
     }
@@ -95,8 +135,11 @@ class MainActivity : FlutterActivity() {
         val ai = if (nativeInitError == null) nativeAi else null
         return mapOf(
             "running" to (server?.isRunning() == true),
-            "host" to "127.0.0.1",
+            "host" to (server?.host ?: "127.0.0.1"),
             "port" to (server?.port ?: 8080),
+            "lanAddress" to lanIpv4Address(),
+            "agentToken" to getAgentToken(),
+            "computerAgentConnected" to (server?.computerAgentConnected() == true),
             "modelLoaded" to (ai?.isModelLoaded() ?: false),
             "model" to (ai?.loadedModelName().orEmpty()),
             "error" to (nativeInitError ?: serverInitError ?: server?.error().orEmpty()),
@@ -206,14 +249,19 @@ class MainActivity : FlutterActivity() {
 private class LocalAiServer(
     private val filesDir: java.io.File,
     private val nativeAi: NativeAi,
+    private val authToken: String,
 ) {
     val port = 8080
+    val host = "0.0.0.0"
     private val executor = Executors.newCachedThreadPool()
     @Volatile private var running = false
     private var socket: ServerSocket? = null
 
     @Volatile private var starting = false
     @Volatile private var startupError: String? = null
+    @Volatile private var lastAgentHeartbeatMs: Long = 0L
+    private val taskQueue = ConcurrentLinkedQueue<JSONObject>()
+    private val completedTasks = ConcurrentLinkedQueue<JSONObject>()
 
     fun start() {
         if (running || starting) return
@@ -226,7 +274,7 @@ private class LocalAiServer(
         // can raise NetworkOnMainThreadException.
         executor.execute {
             try {
-                val address = InetSocketAddress(java.net.InetAddress.getByName("127.0.0.1"), port)
+                val address = InetSocketAddress(java.net.InetAddress.getByName("0.0.0.0"), port)
                 val boundSocket = ServerSocket()
                 boundSocket.reuseAddress = true
                 boundSocket.bind(address, 32)
@@ -242,13 +290,13 @@ private class LocalAiServer(
                     }
                 }
             } catch (e: BindException) {
-                startupError = "cannot bind local server to 127.0.0.1:$port: BindException: ${e.message ?: "bind rejected"}"
+                startupError = "cannot bind LAN server to 0.0.0.0:$port: BindException: ${e.message ?: "bind rejected"}"
             } catch (e: SecurityException) {
-                startupError = "cannot bind local server to 127.0.0.1:$port: SecurityException: ${e.message ?: "operation not permitted"}"
+                startupError = "cannot bind LAN server to 0.0.0.0:$port: SecurityException: ${e.message ?: "operation not permitted"}"
             } catch (e: SocketException) {
                 startupError = "cannot bind local server to 127.0.0.1:$port: SocketException: ${e.message ?: "socket operation failed"}"
             } catch (e: Throwable) {
-                startupError = "cannot start local server on 127.0.0.1:$port: ${e.javaClass.simpleName}: ${e.message ?: "server startup failed"}"
+                startupError = "cannot start LAN server on 0.0.0.0:$port: ${e.javaClass.simpleName}: ${e.message ?: "server startup failed"}"
             } finally {
                 starting = false
                 if (!running) {
@@ -280,11 +328,15 @@ private class LocalAiServer(
             val method = parts[0]
             val path = parts[1]
             var contentLength = 0
+            var authorization: String? = null
             while (true) {
                 val line = readHttpLine(input) ?: return
                 if (line.isEmpty()) break
                 if (line.startsWith("Content-Length:", true)) {
                     contentLength = line.substringAfter(":").trim().toIntOrNull() ?: 0
+                }
+                if (line.startsWith("Authorization:", true)) {
+                    authorization = line.substringAfter(":").trim()
                 }
             }
             if (contentLength < 0 || contentLength > 10 * 1024 * 1024) return
@@ -323,6 +375,18 @@ private class LocalAiServer(
         }
     }
 
+    fun computerAgentConnected(): Boolean =
+        lastAgentHeartbeatMs > 0L && System.currentTimeMillis() - lastAgentHeartbeatMs < 10_000L
+
+    private fun isAuthorized(path: String, authHeader: String?): Boolean {
+        if (path == "/health") return true
+        val expected = System.getenv("POCKETAI_AGENT_TOKEN") ?: ""
+        return expected.isNotBlank() && authHeader == "Bearer " + expected
+    }
+
+    private fun jsonError(status: String, message: String): Pair<String, String> =
+        status to JSONObject().put("error", message).toString()
+
     private fun route(method: String, path: String, body: String): Pair<String, String> {
         if (method == "GET" && path == "/health") {
             return "200 OK" to JSONObject()
@@ -360,6 +424,58 @@ private class LocalAiServer(
                 }
             } catch (e: Exception) {
                 "400 Bad Request" to JSONObject().put("error", e.message ?: "invalid request").toString()
+            }
+        }
+
+        if (path == "/v1/agent/hello" && method == "GET") {
+            lastAgentHeartbeatMs = System.currentTimeMillis()
+            return "200 OK" to JSONObject()
+                .put("name", "PocketAI Computer Agent")
+                .put("protocol", "pocketai-agent-v1")
+                .put("phone_llm", "llama.cpp")
+                .put("capabilities", JSONArray()
+                    .put("task.poll")
+                    .put("task.result")
+                    .put("ping"))
+                .toString()
+        }
+
+        if (path == "/v1/agent/tasks" && method == "POST") {
+            return try {
+                val request = JSONObject(body)
+                val id = request.optString("id").ifBlank { "task-" + System.currentTimeMillis() }
+                val action = request.optString("action").ifBlank { "ping" }
+                val args = request.optJSONObject("args") ?: JSONObject()
+                taskQueue.add(JSONObject()
+                    .put("id", id)
+                    .put("action", action)
+                    .put("args", args)
+                    .put("created_at", System.currentTimeMillis()))
+                "202 Accepted" to JSONObject().put("id", id).put("queued", true).toString()
+            } catch (e: Exception) {
+                jsonError("400 Bad Request", e.message ?: "invalid task")
+            }
+        }
+
+        if (path == "/v1/agent/tasks/next" && method == "GET") {
+            lastAgentHeartbeatMs = System.currentTimeMillis()
+            val task = taskQueue.poll()
+            return if (task == null) {
+                "204 No Content" to ""
+            } else {
+                "200 OK" to task.toString()
+            }
+        }
+
+        if (path == "/v1/agent/tasks/result" && method == "POST") {
+            return try {
+                val result = JSONObject(body)
+                result.put("received_at", System.currentTimeMillis())
+                completedTasks.add(result)
+                lastAgentHeartbeatMs = System.currentTimeMillis()
+                "200 OK" to JSONObject().put("accepted", true).put("task_id", result.optString("id")).toString()
+            } catch (e: Exception) {
+                jsonError("400 Bad Request", e.message ?: "invalid result")
             }
         }
 
