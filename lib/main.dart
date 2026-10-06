@@ -238,63 +238,73 @@ class _DashboardPageState extends State<DashboardPage> {
     if (_benchmarkBusy || !_serverRunning) return;
     setState(() {
       _benchmarkBusy = true;
-      _benchmarkCheck = 'Running 3 identical warm-up/inference rounds…';
+      _benchmarkCheck = 'Running controlled English vs Arabic benchmark…';
     });
 
     final client = HttpClient();
     final results = <String>[];
-    const prompt = 'Hello, give a short one-sentence answer.';
+    const englishPrompt = 'Answer with exactly six simple English words: what is AI?';
+    const arabicPrompt = 'أجب بست كلمات عربية بسيطة بالضبط: ما هو الذكاء الاصطناعي؟';
+
+    Future<void> runCase(String label, String prompt, int round) async {
+      final stopwatch = Stopwatch()..start();
+      final request = await client.postUrl(
+        Uri.parse('http://127.0.0.1:8080/v1/chat/completions'),
+      );
+      final payload = jsonEncode({
+        'messages': [
+          {'role': 'user', 'content': prompt},
+        ],
+        'max_tokens': 16,
+        'temperature': 0.0,
+      });
+      request.headers.contentType = ContentType.json;
+      request.contentLength = utf8.encode(payload).length;
+      request.write(payload);
+      final response = await request.close().timeout(const Duration(minutes: 3));
+      final body = await response.transform(utf8.decoder).join();
+      stopwatch.stop();
+
+      try {
+        final decoded = jsonDecode(body) as Map<String, dynamic>;
+        final perf = decoded['pocketai_performance'] as Map<String, dynamic>?;
+        if (perf != null) {
+          results.add(
+            '$label $round: HTTP ${response.statusCode} • '
+            'prompt_tokens ${perf['prompt_tokens']} • '
+            'generated ${perf['generated_tokens']} • '
+            'prompt ${perf['prompt_decode_ms']} ms '
+            '(${perf['prompt_tokens_per_sec']} tok/s) • '
+            'generation ${perf['generation_ms']} ms '
+            '(${perf['generation_tokens_per_sec']} tok/s) • '
+            'native ${perf['total_native_ms']} ms',
+          );
+        } else {
+          results.add('$label $round: HTTP ${response.statusCode} • no performance data');
+        }
+      } catch (_) {
+        results.add('$label $round: HTTP ${response.statusCode} • ${stopwatch.elapsedMilliseconds} ms');
+      }
+
+      if (mounted) {
+        setState(() {
+          _benchmarkCheck = results.join('\\n');
+          final last = results.isNotEmpty ? results.last : '';
+          final match = RegExp(r'warmup ([^ ]+) ms').firstMatch(last);
+          if (match != null) _warmupCheck = '${match.group(1)} ms';
+        });
+      }
+    }
+
     try {
       client.connectionTimeout = const Duration(seconds: 3);
       for (var round = 1; round <= 3; round++) {
-        final stopwatch = Stopwatch()..start();
-        final request = await client.postUrl(
-          Uri.parse('http://127.0.0.1:8080/v1/chat/completions'),
-        );
-        final payload = jsonEncode({
-          'messages': [
-            {'role': 'user', 'content': prompt},
-          ],
-          'max_tokens': 16,
-          'temperature': 0.0,
-        });
-        request.headers.contentType = ContentType.json;
-        request.contentLength = utf8.encode(payload).length;
-        request.write(payload);
-        final response = await request.close().timeout(const Duration(minutes: 3));
-        final body = await response.transform(utf8.decoder).join();
-        stopwatch.stop();
-
-        try {
-          final decoded = jsonDecode(body) as Map<String, dynamic>;
-          final perf = decoded['pocketai_performance'] as Map<String, dynamic>?;
-          if (perf != null) {
-            results.add(
-              'Round $round: HTTP ${response.statusCode} • '
-              'warmup ${perf['warmup_ms'] ?? 'n/a'} ms • '
-              'total ${perf['total_native_ms']} ms • '
-              'prompt ${perf['prompt_decode_ms']} ms (${perf['prompt_tokens_per_sec']} tok/s) • '
-              'generation ${perf['generation_ms']} ms (${perf['generation_tokens_per_sec']} tok/s) • '
-              'tokens ${perf['generated_tokens']}',
-            );
-          } else {
-            results.add('Round $round: HTTP ${response.statusCode} • no performance data');
-          }
-        } catch (_) {
-          results.add('Round $round: HTTP ${response.statusCode} • ${stopwatch.elapsedMilliseconds} ms');
-        }
-        if (mounted) {
-          setState(() {
-            _benchmarkCheck = results.join('\\n');
-            final last = results.isNotEmpty ? results.last : '';
-            final match = RegExp(r'warmup ([^ ]+) ms').firstMatch(last);
-            _warmupCheck = match == null ? 'Not reported' : '${match.group(1)} ms';
-          });
-        }
+        await runCase('English', englishPrompt, round);
+        await runCase('Arabic', arabicPrompt, round);
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _benchmarkCheck = 'Benchmark failed: $error');
+        setState(() => _benchmarkCheck = 'Controlled benchmark failed: $error');
       }
     } finally {
       client.close(force: true);
@@ -428,7 +438,7 @@ class _DashboardPageState extends State<DashboardPage> {
             icon: _benchmarkBusy
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.speed),
-            label: Text(_benchmarkBusy ? 'Benchmarking…' : 'Run 3-round inference benchmark'),
+            label: Text(_benchmarkBusy ? 'Benchmarking…' : 'Run English vs Arabic controlled benchmark'),
           ),
           const InfoTile(title: 'Native target', value: 'ABI selected by build configuration'),
           const SizedBox(height: 8),
