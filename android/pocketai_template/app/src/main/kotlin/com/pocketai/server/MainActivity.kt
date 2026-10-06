@@ -380,8 +380,7 @@ private class LocalAiServer(
 
     private fun isAuthorized(path: String, authHeader: String?): Boolean {
         if (path == "/health") return true
-        val expected = System.getenv("POCKETAI_AGENT_TOKEN") ?: ""
-        return expected.isNotBlank() && authHeader == "Bearer " + expected
+        return authHeader == "Bearer " + authToken
     }
 
     private fun jsonError(status: String, message: String): Pair<String, String> =
