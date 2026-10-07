@@ -20,6 +20,7 @@ class PocketAIComputerAgent:
         self.browser = None
         self.page = None
         self._playwright = None
+        self.last_error = None
 
     def request(self, method, path, payload=None, timeout=8.0):
         data = json.dumps(payload).encode() if payload is not None else None
@@ -32,10 +33,21 @@ class PocketAIComputerAgent:
     def hello(self):
         try:
             with self.request("GET", "/v1/agent/hello") as response:
+                self.last_error = None if response.status == 200 else f"HTTP {response.status}"
                 return response.status == 200
-        except (urllib.error.URLError, TimeoutError, OSError):
+        except urllib.error.HTTPError as exc:
+            try:
+                body = exc.read().decode("utf-8", errors="replace").strip()
+            except Exception:
+                body = ""
+            self.last_error = f"HTTP {exc.code}: {body[:300]}" if body else f"HTTP {exc.code}"
             return False
-
+        except urllib.error.URLError as exc:
+            self.last_error = f"Network error: {exc.reason}"
+            return False
+        except (TimeoutError, OSError) as exc:
+            self.last_error = f"{type(exc).__name__}: {exc}"
+            return False
     def poll(self):
         try:
             with self.request("GET", "/v1/agent/tasks/next", timeout=30) as response:
@@ -163,11 +175,21 @@ class PocketAIComputerAgent:
         print("Phone: " + self.phone)
         print("Browser actions: open, search, read, click, type, scroll, back, forward, screenshot")
         connected = False
+        last_error_printed = None
         while True:
             now = self.hello()
             if now != connected:
                 connected = now
-                print("Connected to PocketAI phone." if connected else "Phone connection lost.")
+                if connected:
+                    print("Connected to PocketAI phone.")
+                else:
+                    print("Phone connection lost.")
+                    if self.last_error:
+                        print("Connection error:", self.last_error)
+                    last_error_printed = self.last_error
+            elif not connected and self.last_error != last_error_printed:
+                print("Connection error:", self.last_error or "unknown error")
+                last_error_printed = self.last_error
             if connected:
                 task = self.poll()
                 if task:
