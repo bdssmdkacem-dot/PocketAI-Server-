@@ -48,6 +48,7 @@ class PocketAIComputerAgent:
         except (TimeoutError, OSError) as exc:
             self.last_error = f"{type(exc).__name__}: {exc}"
             return False
+
     def poll(self):
         try:
             with self.request("GET", "/v1/agent/tasks/next", timeout=30) as response:
@@ -57,20 +58,59 @@ class PocketAIComputerAgent:
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
             return None
 
+    def browser_runtime_status(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            return {
+                "available": False,
+                "error_code": "PLAYWRIGHT_MISSING",
+                "message": "Playwright is not installed"
+            }
+
+        try:
+            playwright = sync_playwright().start()
+            try:
+                executable = playwright.chromium.executable_path
+                if not Path(executable).exists():
+                    return {
+                        "available": False,
+                        "error_code": "CHROMIUM_MISSING",
+                        "message": "Playwright is installed but Chromium is not installed",
+                        "executable": executable,
+                    }
+                return {
+                    "available": True,
+                    "error_code": None,
+                    "message": "Chromium runtime ready",
+                    "executable": executable,
+                }
+            finally:
+                playwright.stop()
+        except Exception as exc:
+            return {
+                "available": False,
+                "error_code": "BROWSER_RUNTIME_ERROR",
+                "message": f"{type(exc).__name__}: {exc}",
+            }
+
     def browser_start(self):
         if self.page is not None:
             return
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError as exc:
+        status = self.browser_runtime_status()
+        if not status["available"]:
             raise RuntimeError(
-                "Browser actions require Playwright. Install with: "
-                "python -m pip install playwright && python -m playwright install chromium"
-            ) from exc
+                f'{status["error_code"]}: {status["message"]}'
+            )
+        from playwright.sync_api import sync_playwright
         self._playwright = sync_playwright().start()
-        self.browser = self._playwright.chromium.launch(headless=self.headless)
-        context = self.browser.new_context(viewport={"width": 1440, "height": 900})
-        self.page = context.new_page()
+        try:
+            self.browser = self._playwright.chromium.launch(headless=self.headless)
+            context = self.browser.new_context(viewport={"width": 1440, "height": 900})
+            self.page = context.new_page()
+        except Exception:
+            self.browser_stop()
+            raise
 
     def browser_stop(self):
         if self.browser is not None:
@@ -95,10 +135,21 @@ class PocketAIComputerAgent:
             return {"id": task_id, "ok": True, "action": action, "computer": self.agent_name,
                     "platform": platform.platform(), "message": str(args.get("message", "pong"))}
 
+        if action == "agent.status":
+            return {
+                "id": task_id,
+                "ok": True,
+                "action": action,
+                "computer": self.agent_name,
+                "platform": platform.platform(),
+                "browser": self.browser_runtime_status(),
+            }
+
         if action == "browser.open":
             url = str(args.get("url", "")).strip()
             if not url.startswith(("http://", "https://")):
-                return {"id": task_id, "ok": False, "action": action, "error": "url must use http:// or https://"}
+                return {"id": task_id, "ok": False, "action": action, "error_code": "INVALID_URL",
+                        "error": "url must use http:// or https://"}
             self.browser_start()
             self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
             return {"id": task_id, "ok": True, "action": action, **self.browser_read()}
@@ -106,7 +157,8 @@ class PocketAIComputerAgent:
         if action == "browser.search":
             query = str(args.get("query", "")).strip()
             if not query:
-                return {"id": task_id, "ok": False, "action": action, "error": "query is required"}
+                return {"id": task_id, "ok": False, "action": action, "error_code": "INVALID_QUERY",
+                        "error": "query is required"}
             from urllib.parse import quote_plus
             self.browser_start()
             self.page.goto("https://www.google.com/search?q=" + quote_plus(query),
@@ -119,7 +171,8 @@ class PocketAIComputerAgent:
         if action == "browser.click":
             selector = str(args.get("selector", "")).strip()
             if not selector:
-                return {"id": task_id, "ok": False, "action": action, "error": "selector is required"}
+                return {"id": task_id, "ok": False, "action": action, "error_code": "INVALID_SELECTOR",
+                        "error": "selector is required"}
             self.browser_start()
             self.page.locator(selector).first.click(timeout=15000)
             self.page.wait_for_load_state("domcontentloaded", timeout=10000)
@@ -129,7 +182,8 @@ class PocketAIComputerAgent:
             selector = str(args.get("selector", "")).strip()
             text = str(args.get("text", ""))
             if not selector:
-                return {"id": task_id, "ok": False, "action": action, "error": "selector is required"}
+                return {"id": task_id, "ok": False, "action": action, "error_code": "INVALID_SELECTOR",
+                        "error": "selector is required"}
             self.browser_start()
             self.page.locator(selector).first.fill(text, timeout=15000)
             return {"id": task_id, "ok": True, "action": action, "url": self.page.url}
@@ -161,7 +215,8 @@ class PocketAIComputerAgent:
             self.browser_stop()
             return {"id": task_id, "ok": True, "action": action}
 
-        return {"id": task_id, "ok": False, "action": action, "error": "action not enabled"}
+        return {"id": task_id, "ok": False, "action": action, "error_code": "ACTION_NOT_ENABLED",
+                "error": "action not enabled"}
 
     def report(self, result):
         try:
@@ -199,6 +254,7 @@ class PocketAIComputerAgent:
                     except Exception as exc:
                         result = {"id": str(task.get("id", "unknown")), "ok": False,
                                   "action": str(task.get("action", "")),
+                                  "error_code": "EXECUTION_ERROR",
                                   "error": f"{type(exc).__name__}: {exc}"}
                     self.report(result)
                     print("Result:", json.dumps(result, ensure_ascii=False))
