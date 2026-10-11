@@ -343,10 +343,10 @@ private class LocalAiServer(
             if (!isAuthorized(path, authorization)) {
                 val payload = JSONObject().put("error", "unauthorized").toString()
                 val bytes = payload.toByteArray(Charsets.UTF_8)
-                val response = "HTTP/1.1 401 Unauthorized\\r\\n" +
-                    "Content-Type: application/json; charset=utf-8\\r\\n" +
-                    "Content-Length: " + bytes.size + "\\r\\n" +
-                    "Connection: close\\r\\n\\r\\n"
+                val response = "HTTP/1.1 401 Unauthorized\r\n" +
+                    "Content-Type: application/json; charset=utf-8\r\n" +
+                    "Content-Length: " + bytes.size + "\r\n" +
+                    "Connection: close\r\n\r\n"
                 val out = c.getOutputStream()
                 out.write(response.toByteArray(Charsets.US_ASCII))
                 out.write(bytes)
