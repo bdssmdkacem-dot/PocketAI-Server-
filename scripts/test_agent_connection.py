@@ -62,7 +62,11 @@ def main() -> int:
         if status != 401:
             raise RuntimeError(f"Unauthenticated /v1/agent/hello should return HTTP 401, got HTTP {status}: {body[:300]}")
         parse_json(body, "unauthenticated /v1/agent/hello")
-        print("PASS auth rejection: missing token returns valid JSON with HTTP 401")
+        status, body = request(base, "/v1/agent/hello", token="invalid-acceptance-test-token")
+        rejected = parse_json(body, "invalid-token /v1/agent/hello")
+        if status != 401 or rejected.get("error") != "unauthorized":
+            raise RuntimeError(f"Invalid token should return HTTP 401 with an unauthorized error, got HTTP {status}: {body[:300]}")
+        print("PASS auth rejection: missing and incorrect tokens return valid JSON with HTTP 401")
 
         if not args.token:
             print("SKIP authenticated pairing and ping: pass --token to continue")
