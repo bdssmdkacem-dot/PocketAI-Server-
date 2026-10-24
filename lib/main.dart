@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -62,7 +63,10 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _submitAgentTask() async {
     final goal = _agentTaskController.text.trim();
     if (goal.isEmpty || !_serverRunning || _agentToken.isEmpty) return;
-    setState(() => _agentTaskLog.insert(0, 'Planning: $goal'));
+    setState(() {
+      _agentTaskLog.insert(0, 'Planning: $goal');
+      _agentCheck = 'Planning task…';
+    });
     final client = HttpClient();
     try {
       final request = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/plan'));
@@ -78,27 +82,102 @@ class _DashboardPageState extends State<DashboardPage> {
       final plan = decoded['plan'];
       final steps = plan is Map ? plan['steps'] : null;
       if (steps is! List || steps.isEmpty) throw StateError('Planner returned no executable steps');
-      if (mounted) setState(() => _agentCheck = 'Plan ready • ${steps.length} step(s)');
+      if (steps.length > 8) throw StateError('Planner returned more than 8 steps');
+      if (mounted) {
+        setState(() {
+          _agentCheck = 'Plan ready • ${steps.length} step(s)';
+          _agentTaskLog.insert(0, 'Plan ready: ${steps.length} step(s)');
+        });
+      }
+
+      // Execute one step at a time. Queueing the whole plan at once can make
+      // browser navigation overlap (for example search racing with read).
       for (var index = 0; index < steps.length; index++) {
         final step = steps[index];
         if (step is! Map) throw StateError('Invalid plan step ${index + 1}');
         final action = step['action']?.toString() ?? '';
-        final args = step['args'] is Map ? Map<String, dynamic>.from(step['args'] as Map) : <String, dynamic>{};
+        final args = step['args'] is Map
+            ? Map<String, dynamic>.from(step['args'] as Map)
+            : <String, dynamic>{};
+        if (action.isEmpty) throw StateError('Plan step ${index + 1} has no action');
+
+        final taskId = 'task-${DateTime.now().microsecondsSinceEpoch}-$index';
         final taskRequest = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/tasks'));
-        final taskPayload = jsonEncode({'id': 'task-${DateTime.now().microsecondsSinceEpoch}-$index', 'action': action, 'args': args});
+        final taskPayload = jsonEncode({'id': taskId, 'action': action, 'args': args});
         taskRequest.headers.contentType = ContentType.json;
         taskRequest.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
         taskRequest.contentLength = utf8.encode(taskPayload).length;
         taskRequest.write(taskPayload);
         final taskResponse = await taskRequest.close().timeout(const Duration(seconds: 10));
         final taskBody = await taskResponse.transform(utf8.decoder).join();
-        if (taskResponse.statusCode != 202) throw StateError('Queue HTTP ${taskResponse.statusCode}: $taskBody');
-        if (mounted) setState(() => _agentTaskLog.insert(0, 'Queued ${index + 1}/${steps.length}: $action'));
+        if (taskResponse.statusCode != 202) {
+          throw StateError('Queue HTTP ${taskResponse.statusCode}: $taskBody');
+        }
+
+        if (mounted) {
+          setState(() {
+            _agentCheck = 'Executing ${index + 1}/${steps.length}: $action';
+            _agentTaskLog.insert(0, 'Queued ${index + 1}/${steps.length}: $action • $taskId');
+          });
+        }
+
+        // The phone endpoint drains completed results, so keep polling it until
+        // this exact task ID completes. Never start the next step on queue
+        // acceptance alone.
+        final deadline = DateTime.now().add(const Duration(seconds: 90));
+        Map<String, dynamic>? taskResult;
+        while (DateTime.now().isBefore(deadline)) {
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+          final resultsRequest = await client.getUrl(
+            Uri.parse('http://127.0.0.1:8080/v1/agent/tasks/results'),
+          );
+          resultsRequest.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
+          final resultsResponse = await resultsRequest.close().timeout(const Duration(seconds: 10));
+          final resultsBody = await resultsResponse.transform(utf8.decoder).join();
+          if (resultsResponse.statusCode != 200) {
+            throw StateError('Results HTTP ${resultsResponse.statusCode}: $resultsBody');
+          }
+          final resultsJson = jsonDecode(resultsBody) as Map<String, dynamic>;
+          final results = resultsJson['results'];
+          if (results is List) {
+            for (final item in results) {
+              if (item is! Map) continue;
+              final result = Map<String, dynamic>.from(item);
+              if (result['id']?.toString() == taskId) {
+                taskResult = result;
+              } else {
+                if (mounted) {
+                  setState(() => _agentTaskLog.insert(
+                    0, 'Other task result: ${result['id'] ?? 'unknown'}',
+                  ));
+                }
+              }
+            }
+          }
+          if (taskResult != null) break;
+        }
+        if (taskResult == null) {
+          throw TimeoutException('Timed out waiting for result of $taskId');
+        }
+        final ok = taskResult['ok'] == true;
+        if (mounted) {
+          setState(() {
+            _agentTaskLog.insert(
+              0,
+              '${ok ? 'SUCCESS' : 'FAILED'} • ${index + 1}/${steps.length} • $action • $taskId',
+            );
+          });
+        }
+        if (!ok) {
+          throw StateError('Step ${index + 1} ($action) failed: ${taskResult['error'] ?? taskResult['error_code'] ?? taskResult}');
+        }
       }
+
       if (mounted) {
         setState(() {
-          _agentCheck = 'Tasks queued • waiting for Computer Agent';
-          _agentTaskLog.insert(0, 'Goal queued: $goal');
+          _agentCheck = 'Task completed • ${steps.length} step(s)';
+          _agentTaskLog.insert(0, 'Goal completed: $goal');
+          _agentTaskController.clear();
         });
       }
     } catch (error) {
