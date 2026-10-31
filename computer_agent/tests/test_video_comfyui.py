@@ -16,7 +16,9 @@ class ComfyUIClientTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ComfyUIError):
                 ComfyUIClient("http://gpu.example.com:8188", directory, allow_remote=True)
-            client = ComfyUIClient("https://gpu.example.com", directory, allow_remote=True)
+            with self.assertRaises(ComfyUIError):
+                ComfyUIClient("https://gpu.example.com", directory, allow_remote=True)
+            client = ComfyUIClient("https://gpu.example.com", directory, allow_remote=True, api_token="test-token")
             self.assertEqual(client.base_url, "https://gpu.example.com")
 
     def test_workflow_path_cannot_escape_root(self):
