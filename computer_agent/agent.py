@@ -16,7 +16,7 @@ from video_comfyui import ComfyUIClient, ComfyUIError
 class PocketAIComputerAgent:
     def __init__(self, phone: str, token: str, interval: float = 0.7, headless: bool = False,
                  comfyui_url: str = "", comfyui_workflows: str = "computer_agent/workflows",
-                 allow_remote_comfyui: bool = False) -> None:
+                 allow_remote_comfyui: bool = False, comfyui_token: str = "") -> None:
         self.phone = phone.rstrip("/")
         self.token = token
         self.interval = max(0.2, interval)
@@ -30,7 +30,7 @@ class PocketAIComputerAgent:
         self.comfyui_config_error = None
         if comfyui_url:
             try:
-                self.comfyui = ComfyUIClient(comfyui_url, comfyui_workflows, allow_remote_comfyui)
+                self.comfyui = ComfyUIClient(comfyui_url, comfyui_workflows, allow_remote_comfyui, comfyui_token)
             except ComfyUIError as exc:
                 self.comfyui_config_error = str(exc)
 
@@ -331,9 +331,12 @@ def main():
                         help="Directory containing trusted ComfyUI API workflow JSON files")
     parser.add_argument("--allow-remote-comfyui", action="store_true",
                         help="Allow an explicitly configured remote HTTPS ComfyUI endpoint")
+    parser.add_argument("--comfyui-token", default=os.environ.get("POCKETAI_COMFYUI_TOKEN", ""),
+                        help="Bearer token for an authenticated remote ComfyUI HTTPS gateway")
     args = parser.parse_args()
     PocketAIComputerAgent(args.phone, args.token, args.interval, args.headless,
-                          args.comfyui_url, args.comfyui_workflows, args.allow_remote_comfyui).run()
+                          args.comfyui_url, args.comfyui_workflows, args.allow_remote_comfyui,
+                          args.comfyui_token).run()
 
 
 if __name__ == "__main__":
