@@ -17,10 +17,11 @@ class ComfyUIError(RuntimeError):
 
 class ComfyUIClient:
     def __init__(self, base_url: str, workflows_dir: str, allow_remote: bool = False,
-                 timeout: float = 15.0) -> None:
+                 api_token: str = "", timeout: float = 15.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.workflows_dir = Path(workflows_dir).expanduser().resolve()
         self.allow_remote = allow_remote
+        self.api_token = api_token.strip()
         self.timeout = timeout
         self._validate_base_url()
 
@@ -34,13 +35,18 @@ class ComfyUIClient:
         local_hosts = {"localhost", "127.0.0.1", "::1"}
         if not self.allow_remote and host not in local_hosts:
             raise ComfyUIError("Remote ComfyUI is disabled; explicitly enable --allow-remote-comfyui")
-        if self.allow_remote and host not in local_hosts and parsed.scheme != "https":
-            raise ComfyUIError("Remote ComfyUI connections must use HTTPS")
+        if self.allow_remote and host not in local_hosts:
+            if parsed.scheme != "https":
+                raise ComfyUIError("Remote ComfyUI connections must use HTTPS")
+            if not self.api_token:
+                raise ComfyUIError("Remote ComfyUI requires a bearer token from an authenticated HTTPS gateway")
 
     def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
         url = self.base_url + path
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         headers = {"Accept": "application/json"}
+        if self.api_token:
+            headers["Authorization"] = "Bearer " + self.api_token
         if data is not None:
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
