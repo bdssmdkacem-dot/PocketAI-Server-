@@ -10,7 +10,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from video_comfyui import ComfyUIClient, ComfyUIError
+try:
+    from .video_comfyui import ComfyUIClient, ComfyUIError
+except ImportError:  # Support direct execution as a script from the repository root.
+    from video_comfyui import ComfyUIClient, ComfyUIError
 
 
 class PocketAIComputerAgent:
