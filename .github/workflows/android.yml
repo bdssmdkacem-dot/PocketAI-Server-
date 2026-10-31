@@ -4,7 +4,17 @@ name: Android APK
 on:
   push:
     branches: [main, feature/**]
+    paths:
+      - "android/**"
+      - "lib/**"
+      - "pubspec.yaml"
+      - "scripts/**"
+      - ".github/workflows/android.yml"
   workflow_dispatch:
+
+concurrency:
+  group: pocketai-android-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
