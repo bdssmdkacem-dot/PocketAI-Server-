@@ -35,7 +35,7 @@ PocketAI's Android app remains the controller and local LLM runtime. Video infer
 6. Submit a workflow with video.comfyui.submit, passing a relative workflow_file. To replace text prompts, provide the exact positive and negative CLIPTextEncode node IDs from that workflow. The workflow must be tested in ComfyUI before using it from PocketAI.
 7. Inspect completion with video.comfyui.history and the returned prompt_id.
 
-For a remote GPU endpoint, use HTTPS and explicitly add --allow-remote-comfyui. The endpoint is configured by the computer-agent operator; task payloads cannot change the destination URL. Do not expose an unauthenticated ComfyUI instance to the public internet. Use a private tunnel/VPN or an authenticated gateway for remote access.
+For a remote GPU endpoint, use an authenticated HTTPS gateway, set the POCKETAI_COMFYUI_TOKEN environment variable, and explicitly add --allow-remote-comfyui. The endpoint is configured by the computer-agent operator; task payloads cannot change the destination URL. Direct unauthenticated ComfyUI exposure is not supported.
 
 The first integration intentionally submits and tracks jobs; it does not claim to download or edit model weights, invent model-specific workflows, or guarantee generation speed. Video generation quality and performance depend on the selected model, workflow, GPU VRAM, and model license.
 
