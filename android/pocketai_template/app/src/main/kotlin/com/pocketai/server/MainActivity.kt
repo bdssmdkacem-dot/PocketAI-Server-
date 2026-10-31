@@ -458,7 +458,10 @@ private class LocalAiServer(
                     .put("browser.back")
                     .put("browser.forward")
                     .put("browser.screenshot")
-                    .put("browser.close"))
+                    .put("browser.close")
+                    .put("video.comfyui.status")
+                    .put("video.comfyui.submit")
+                    .put("video.comfyui.history"))
                 .toString()
         }
 
@@ -520,7 +523,7 @@ private class LocalAiServer(
                     if (goal.isBlank()) {
                         "400 Bad Request" to JSONObject().put("error", "goal is required").toString()
                     } else {
-                        val plannerPrompt = "You are PocketAI browser task planner. Convert the user goal into a short JSON plan. Allowed actions only: browser.search, browser.open, browser.read, browser.click, browser.type, browser.scroll, browser.back, browser.forward, browser.screenshot. Return ONLY valid JSON: {\"steps\":[{\"action\":\"browser.search\",\"args\":{\"query\":\"...\"}}]}. Maximum 8 steps. Do not invent selectors unless explicitly provided. User goal: " + goal
+                        val plannerPrompt = "You are PocketAI computer task planner. Convert the user goal into a short JSON plan. Return ONLY valid JSON with this shape: {\"steps\":[{\"action\":\"browser.search\",\"args\":{\"query\":\"...\"}}]}. Maximum 8 steps. Allowed browser actions: browser.search, browser.open, browser.read, browser.click, browser.type, browser.scroll, browser.back, browser.forward, browser.screenshot. Allowed video actions: video.comfyui.status, video.comfyui.submit, video.comfyui.history. For video.comfyui.submit, args may contain workflow_file, prompt, negative_prompt, prompt_node_id, negative_prompt_node_id. For video.comfyui.history, args must contain prompt_id. Never invent workflow filenames, node IDs, or prompt IDs. If the user asks to generate a video but does not provide an existing workflow filename and exact prompt node IDs, plan only video.comfyui.status and do not submit a generation job. Do not claim a job is completed. Do not invent browser selectors. User goal: " + goal
                         val response = nativeAi.generate(plannerPrompt, 256, 0.0f)
                         if (response.startsWith("ERROR:")) {
                             "500 Internal Server Error" to JSONObject().put("error", response).toString()
@@ -532,12 +535,12 @@ private class LocalAiServer(
                                 "400 Bad Request" to JSONObject().put("error", "plan exceeds maximum of 8 steps").toString()
                             } else {
                                 var valid = true
-                                val allowed = setOf("browser.search","browser.open","browser.read","browser.click","browser.type","browser.scroll","browser.back","browser.forward","browser.screenshot")
+                                val allowed = setOf("browser.search","browser.open","browser.read","browser.click","browser.type","browser.scroll","browser.back","browser.forward","browser.screenshot","video.comfyui.status","video.comfyui.submit","video.comfyui.history")
                                 for (i in 0 until steps.length()) {
                                     val action = steps.optJSONObject(i)?.optString("action").orEmpty()
                                     if (!allowed.contains(action)) { valid = false; break }
                                 }
-                                if (!valid) "400 Bad Request" to JSONObject().put("error", "plan contains an unsupported browser action").toString()
+                                if (!valid) "400 Bad Request" to JSONObject().put("error", "plan contains an unsupported computer-agent action").toString()
                                 else "200 OK" to JSONObject().put("goal", goal).put("plan", parsed).toString()
                             }
                         }
