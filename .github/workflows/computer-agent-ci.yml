@@ -25,6 +25,8 @@ jobs:
           python-version: "3.11"
       - name: Compile agent modules
         run: python -m compileall -q computer_agent
+      - name: Verify package import
+        run: python -c "from computer_agent.agent import PocketAIComputerAgent; print('agent import OK')"
       - name: Run video connector unit tests
         working-directory: computer_agent
         run: python -m unittest discover -s tests -v
