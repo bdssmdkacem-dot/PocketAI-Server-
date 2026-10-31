@@ -79,13 +79,16 @@ class _DashboardPageState extends State<DashboardPage> {
       final steps = plan is Map ? plan['steps'] : null;
       if (steps is! List || steps.isEmpty) throw StateError('Planner returned no executable steps');
       if (mounted) setState(() => _agentCheck = 'Plan ready • ${steps.length} step(s)');
+      final pendingTasks = <String, String>{};
       for (var index = 0; index < steps.length; index++) {
         final step = steps[index];
         if (step is! Map) throw StateError('Invalid plan step ${index + 1}');
         final action = step['action']?.toString() ?? '';
         final args = step['args'] is Map ? Map<String, dynamic>.from(step['args'] as Map) : <String, dynamic>{};
+        final taskId = 'task-${DateTime.now().microsecondsSinceEpoch}-$index';
+        pendingTasks[taskId] = action;
         final taskRequest = await client.postUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/tasks'));
-        final taskPayload = jsonEncode({'id': 'task-${DateTime.now().microsecondsSinceEpoch}-$index', 'action': action, 'args': args});
+        final taskPayload = jsonEncode({'id': taskId, 'action': action, 'args': args});
         taskRequest.headers.contentType = ContentType.json;
         taskRequest.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
         taskRequest.contentLength = utf8.encode(taskPayload).length;
@@ -99,6 +102,44 @@ class _DashboardPageState extends State<DashboardPage> {
         setState(() {
           _agentCheck = 'Tasks queued • waiting for Computer Agent';
           _agentTaskLog.insert(0, 'Goal queued: $goal');
+        });
+      }
+      // Collect the paired computer's structured results so video prompt IDs and
+      // failures are visible in the existing task console instead of being lost.
+      for (var attempt = 0; attempt < 120 && pendingTasks.isNotEmpty; attempt++) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+        final resultsRequest = await client.getUrl(Uri.parse('http://127.0.0.1:8080/v1/agent/tasks/results'));
+        resultsRequest.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_agentToken');
+        final resultsResponse = await resultsRequest.close().timeout(const Duration(seconds: 10));
+        final resultsBody = await resultsResponse.transform(utf8.decoder).join();
+        if (resultsResponse.statusCode != 200) {
+          throw StateError('Agent results HTTP ${resultsResponse.statusCode}: $resultsBody');
+        }
+        final resultsDecoded = jsonDecode(resultsBody) as Map<String, dynamic>;
+        final results = resultsDecoded['results'];
+        if (results is! List) continue;
+        for (final item in results) {
+          if (item is! Map) continue;
+          final result = Map<String, dynamic>.from(item);
+          final taskId = result['id']?.toString() ?? '';
+          final action = pendingTasks.remove(taskId);
+          if (action == null) continue;
+          final summary = jsonEncode(result);
+          if (mounted) {
+            setState(() {
+              _agentTaskLog.insert(0, 'Result $action: ${summary.length > 900 ? '${summary.substring(0, 900)}…' : summary}');
+            });
+          }
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _agentCheck = pendingTasks.isEmpty
+              ? 'Agent returned ${steps.length} task result(s)'
+              : 'Agent still processing ${pendingTasks.length} task(s)';
+          if (pendingTasks.isNotEmpty) {
+            _agentTaskLog.insert(0, 'Still waiting for: ${pendingTasks.values.join(', ')}');
+          }
         });
       }
     } catch (error) {
