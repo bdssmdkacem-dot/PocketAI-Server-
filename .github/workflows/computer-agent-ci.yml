@@ -1,0 +1,30 @@
+name: Computer Agent CI
+
+on:
+  push:
+    branches: [main, feature/**, fix/**]
+    paths:
+      - "computer_agent/**"
+      - ".github/workflows/computer-agent-ci.yml"
+  pull_request:
+    paths:
+      - "computer_agent/**"
+      - ".github/workflows/computer-agent-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile agent modules
+        run: python -m compileall -q computer_agent
+      - name: Run video connector unit tests
+        working-directory: computer_agent
+        run: python -m unittest discover -s tests -v
