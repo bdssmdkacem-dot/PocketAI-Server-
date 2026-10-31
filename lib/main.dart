@@ -125,9 +125,10 @@ class _DashboardPageState extends State<DashboardPage> {
           final action = pendingTasks.remove(taskId);
           if (action == null) continue;
           final summary = jsonEncode(result);
+          final compactSummary = summary.length > 900 ? '${summary.substring(0, 900)}…' : summary;
           if (mounted) {
             setState(() {
-              _agentTaskLog.insert(0, 'Result $action: ${summary.length > 900 ? '${summary.substring(0, 900)}…' : summary}');
+              _agentTaskLog.insert(0, 'Result $action: $compactSummary');
             });
           }
         }
