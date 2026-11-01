@@ -53,11 +53,15 @@ The product goal is to let a user create a coherent long-form video from a brief
 
 | Component | Confirmed value |
 |---|---|
-| OS | Windows 10 64-bit |
+| OS | Windows 10 Pro, 10.0.19045, 64-bit (22H2) |
 | CPU | Intel Core i5-6500 @ 3.20 GHz (6th generation, 4 cores) |
 | Integrated GPU | Intel HD Graphics 530 |
+| Graphics driver | 31.0.101.2111, dated 2022-07-19 |
+| Reported graphics memory | 1 GB (integrated adapter; do not interpret as 1 GB dedicated VRAM) |
 | System RAM | 7.7 GB |
+| Free disk space | C: about 14.1 GB; E: about 10.9 GB |
 | NVIDIA/CUDA | Not present |
+| FFmpeg | Not installed or not available on PATH (ffmpeg -version fails) |
 
 **Feasibility decision:** this PC is not a practical local worker for modern diffusion video models such as large Wan/LTX variants. Do not download large video weights or advertise local video generation on this machine. Use it initially as the orchestration, file-management, and FFmpeg assembly host. CPU-based AI inference may be tested for lightweight tasks only, with measured latency and memory use.
 
@@ -114,13 +118,22 @@ A project is not accepted merely because every ComfyUI request returned a prompt
 
 ## Immediate next action
 
-On the paired Windows 10 PC, collect the remaining storage, driver, and OS details:
+The user has supplied the Windows inventory. Before installing tools or downloading models:
 
+1. Free additional disk space; current free space is only about 14.1 GB on C: and 10.9 GB on E:.
+2. Confirm whether FFmpeg is installed outside PATH:
+   ```powershell
+   where.exe ffmpeg
+   Get-Command ffmpeg -ErrorAction SilentlyContinue
+   ```
+3. If FFmpeg is absent, install a trusted Windows build only after choosing a destination with sufficient free space, then verify `ffmpeg -version` and `ffprobe -version`.
+4. Check OpenVINO CPU discovery in a clean Python environment first; separately test GPU discovery only if the installed Intel driver/runtime exposes a supported device. Record exact device names and a small benchmark; do not assume HD Graphics 530 acceleration.
+5. Keep large model downloads disabled. Use this PC initially for PocketAI orchestration, lightweight CPU tasks, file management, and modest FFmpeg assembly. A remote or upgraded GPU worker is the practical route for modern generative video.
+
+Suggested read-only checks:
 ```powershell
-Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture
-Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion, DriverDate, AdapterRAM
-Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free
-ffmpeg -version
+where.exe ffmpeg
+Get-Command python, py -ErrorAction SilentlyContinue
+Get-CimInstance Win32_OperatingSystem | Select-Object BuildNumber
 ```
 
-The user has already confirmed Windows 10 64-bit, Intel Core i5-6500, Intel HD Graphics 530, and 7.7 GB RAM. Use the remaining evidence to validate the host's practical role and any OpenVINO CPU/GPU path. Keep large model downloads disabled until a compatible rendering backend is available and benchmarked.
