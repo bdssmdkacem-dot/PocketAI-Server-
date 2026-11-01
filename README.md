@@ -152,6 +152,10 @@ The computer agent must not behave like an unrestricted remote shell. Planned co
 
 The core execution loop is **observe → act → verify**. A click or successful command is not proof that the requested task succeeded until the expected result is checked.
 
+### Optional video-generation worker
+
+The paired computer can optionally run ComfyUI as a separate GPU worker. PocketAI keeps planning and task orchestration on the phone; the computer agent submits trusted API-format workflows and checks their job history. Video model weights are never packaged in the Android app. See [docs/video-generation.md](docs/video-generation.md) and [computer_agent/README.md](computer_agent/README.md). This first integration provides guarded connectivity, workflow submission and history only; multi-shot story production, progress streaming, output transfer, audio and FFmpeg assembly remain future acceptance gates.
+
 ---
 
 ## OpenAI-compatible API

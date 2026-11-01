@@ -3,15 +3,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
+try:
+    from .video_comfyui import ComfyUIClient, ComfyUIError
+except ImportError:  # Support direct execution as a script from the repository root.
+    from video_comfyui import ComfyUIClient, ComfyUIError
+
 
 class PocketAIComputerAgent:
-    def __init__(self, phone: str, token: str, interval: float = 0.7, headless: bool = False) -> None:
+    def __init__(self, phone: str, token: str, interval: float = 0.7, headless: bool = False,
+                 comfyui_url: str = "", comfyui_workflows: str = "computer_agent/workflows",
+                 allow_remote_comfyui: bool = False, comfyui_token: str = "") -> None:
         self.phone = phone.rstrip("/")
         self.token = token
         self.interval = max(0.2, interval)
@@ -21,6 +29,13 @@ class PocketAIComputerAgent:
         self.page = None
         self._playwright = None
         self.last_error = None
+        self.comfyui = None
+        self.comfyui_config_error = None
+        if comfyui_url:
+            try:
+                self.comfyui = ComfyUIClient(comfyui_url, comfyui_workflows, allow_remote_comfyui, comfyui_token)
+            except ComfyUIError as exc:
+                self.comfyui_config_error = str(exc)
 
     def request(self, method, path, payload=None, timeout=8.0):
         data = json.dumps(payload).encode() if payload is not None else None
@@ -143,7 +158,53 @@ class PocketAIComputerAgent:
                 "computer": self.agent_name,
                 "platform": platform.platform(),
                 "browser": self.browser_runtime_status(),
+                "video_worker": {
+                    "configured": self.comfyui is not None,
+                    "configuration_error": self.comfyui_config_error,
+                    "workflow_directory": str(self.comfyui.workflows_dir) if self.comfyui else None,
+                },
             }
+
+        if action == "video.comfyui.status":
+            if self.comfyui is None:
+                return {"id": task_id, "ok": False, "action": action,
+                        "error_code": "VIDEO_WORKER_NOT_CONFIGURED",
+                        "error": self.comfyui_config_error or "Start the agent with --comfyui-url"}
+            try:
+                return {"id": task_id, "ok": True, "action": action, **self.comfyui.status()}
+            except ComfyUIError as exc:
+                return {"id": task_id, "ok": False, "action": action,
+                        "error_code": "COMFYUI_UNAVAILABLE", "error": str(exc)}
+
+        if action == "video.comfyui.submit":
+            if self.comfyui is None:
+                return {"id": task_id, "ok": False, "action": action,
+                        "error_code": "VIDEO_WORKER_NOT_CONFIGURED",
+                        "error": self.comfyui_config_error or "Start the agent with --comfyui-url"}
+            try:
+                result = self.comfyui.submit(
+                    workflow_file=str(args.get("workflow_file", "")),
+                    prompt=str(args.get("prompt", "")),
+                    negative_prompt=str(args.get("negative_prompt", "")),
+                    prompt_node_id=str(args.get("prompt_node_id", "")),
+                    negative_prompt_node_id=str(args.get("negative_prompt_node_id", "")),
+                )
+                return {"id": task_id, "ok": True, "action": action, **result}
+            except ComfyUIError as exc:
+                return {"id": task_id, "ok": False, "action": action,
+                        "error_code": "COMFYUI_SUBMISSION_FAILED", "error": str(exc)}
+
+        if action == "video.comfyui.history":
+            if self.comfyui is None:
+                return {"id": task_id, "ok": False, "action": action,
+                        "error_code": "VIDEO_WORKER_NOT_CONFIGURED",
+                        "error": self.comfyui_config_error or "Start the agent with --comfyui-url"}
+            try:
+                return {"id": task_id, "ok": True, "action": action,
+                        **self.comfyui.history(str(args.get("prompt_id", "")))}
+            except ComfyUIError as exc:
+                return {"id": task_id, "ok": False, "action": action,
+                        "error_code": "COMFYUI_HISTORY_FAILED", "error": str(exc)}
 
         if action == "browser.open":
             url = str(args.get("url", "")).strip()
@@ -267,8 +328,18 @@ def main():
     parser.add_argument("--token", required=True)
     parser.add_argument("--interval", type=float, default=0.7)
     parser.add_argument("--headless", action="store_true", help="Run Chromium without showing a browser window")
+    parser.add_argument("--comfyui-url", default=os.environ.get("POCKETAI_COMFYUI_URL", ""),
+                        help="Optional ComfyUI base URL; defaults to localhost only")
+    parser.add_argument("--comfyui-workflows", default="computer_agent/workflows",
+                        help="Directory containing trusted ComfyUI API workflow JSON files")
+    parser.add_argument("--allow-remote-comfyui", action="store_true",
+                        help="Allow an explicitly configured remote HTTPS ComfyUI endpoint")
+    parser.add_argument("--comfyui-token", default=os.environ.get("POCKETAI_COMFYUI_TOKEN", ""),
+                        help="Bearer token for an authenticated remote ComfyUI HTTPS gateway")
     args = parser.parse_args()
-    PocketAIComputerAgent(args.phone, args.token, args.interval, args.headless).run()
+    PocketAIComputerAgent(args.phone, args.token, args.interval, args.headless,
+                          args.comfyui_url, args.comfyui_workflows, args.allow_remote_comfyui,
+                          args.comfyui_token).run()
 
 
 if __name__ == "__main__":
