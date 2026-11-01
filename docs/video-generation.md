@@ -114,10 +114,13 @@ A project is not accepted merely because every ComfyUI request returned a prompt
 
 ## Immediate next action
 
-On the Windows PC paired with PocketAI, run:
+On the paired Windows 10 PC, collect the remaining storage, driver, and OS details:
 
 ```powershell
-nvidia-smi
+Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture
+Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion, DriverDate, AdapterRAM
+Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free
+ffmpeg -version
 ```
 
-Save the complete output with the PC's RAM and free disk-space figures. Use that evidence to choose a compatible model variant and workflow. If `nvidia-smi` is unavailable, identify the GPU in Windows Device Manager and collect its exact model and dedicated VRAM instead.
+The user has already confirmed Windows 10 64-bit, Intel Core i5-6500, Intel HD Graphics 530, and 7.7 GB RAM. Use the remaining evidence to validate the host's practical role and any OpenVINO CPU/GPU path. Keep large model downloads disabled until a compatible rendering backend is available and benchmarked.
