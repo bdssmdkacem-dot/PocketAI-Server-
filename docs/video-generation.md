@@ -49,14 +49,29 @@ The product goal is to let a user create a coherent long-form video from a brief
 
 ### Phase 0 — hardware and model feasibility (gate before model downloads)
 
-- [ ] Capture the paired Windows PC GPU report with `nvidia-smi` (GPU model, VRAM, driver/CUDA information).
-- [ ] Record system RAM, free disk space, and available storage for model weights and generated clips.
-- [ ] Verify the installed Python, PyTorch, ComfyUI and custom-node versions.
-- [ ] Benchmark a small test workflow and record peak VRAM, render time, resolution, frame count, and failure behavior.
-- [ ] Select a model only after comparing measured hardware requirements and its code/weight license. Evaluate Wan and LTX as candidates; do not assume either is compatible before checking the exact model variant and workflow.
-- [ ] Keep large model downloads opt-in and show expected disk/VRAM requirements before installation.
+**Confirmed paired-PC profile (reported by the user, 2026-11-01):**
 
-**Current gate:** exact PC GPU/VRAM is not yet confirmed. Do not select or download a large video model, and do not claim local generation is ready, until this phase is complete.
+| Component | Confirmed value |
+|---|---|
+| OS | Windows 10 64-bit |
+| CPU | Intel Core i5-6500 @ 3.20 GHz (6th generation, 4 cores) |
+| Integrated GPU | Intel HD Graphics 530 |
+| System RAM | 7.7 GB |
+| NVIDIA/CUDA | Not present |
+
+**Feasibility decision:** this PC is not a practical local worker for modern diffusion video models such as large Wan/LTX variants. Do not download large video weights or advertise local video generation on this machine. Use it initially as the orchestration, file-management, and FFmpeg assembly host. CPU-based AI inference may be tested for lightweight tasks only, with measured latency and memory use.
+
+OpenVINO is a candidate for CPU inference: Intel's current requirements list 6th-generation Intel Core CPUs and Windows 10 64-bit as supported. OpenVINO documentation also lists Intel HD Graphics families for GPU inference, but actual HD Graphics 530 use must be verified against the installed driver, OpenCL support, and the exact runtime/device plugin; generic family support is not proof that this particular machine will accelerate the chosen workload. Prefer CPU as the first validated target. See the [OpenVINO system requirements](https://docs.openvino.ai/2026/about-openvino/release-notes-openvino/system-requirements.html).
+
+- [x] Capture exact CPU, integrated GPU, OS architecture, and system RAM.
+- [ ] Record free disk space, Intel graphics driver version/date, and Windows build.
+- [ ] Check whether OpenVINO detects the CPU and, separately, whether it detects a usable GPU device. Record the device list and a small inference benchmark; do not assume GPU acceleration.
+- [ ] Verify Python, PyTorch, ComfyUI, FFmpeg, and custom-node versions only if those components are installed.
+- [ ] Benchmark non-generative workloads first (prompt/story planning, image resizing, video assembly) and record peak RAM, CPU utilization, and elapsed time.
+- [ ] If evaluating video generation, use a remote/hosted GPU worker or a separately upgraded machine with adequate dedicated VRAM. Compare exact model variant requirements and code/weight licenses before selecting it.
+- [ ] Keep all large model downloads opt-in and show expected disk/RAM/VRAM requirements before installation.
+
+**Current gate:** the confirmed PC is suitable as a controller/assembler candidate, not as the assumed local diffusion-video renderer. Do not select or download Wan/LTX video weights for this PC. Revisit local generation only if a compatible external GPU worker is added or a small model is proven through a measured end-to-end test.
 
 ### Phase 1 — dependable single-clip generation
 
